@@ -1,0 +1,608 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>私募基金业绩展板 - 云服务器部署教程</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+            line-height: 1.8;
+            color: #333;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 40px 20px;
+        }
+        .container {
+            max-width: 860px;
+            margin: 0 auto;
+            background: #fff;
+            border-radius: 16px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            overflow: hidden;
+        }
+        .header {
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            color: #fff;
+            padding: 50px 40px;
+            text-align: center;
+        }
+        .header h1 { font-size: 28px; margin-bottom: 10px; }
+        .header p { color: #94a3b8; font-size: 15px; }
+        .content { padding: 40px; }
+        .step { margin-bottom: 40px; }
+        .step-header {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 20px;
+            padding-bottom: 12px;
+            border-bottom: 2px solid #e2e8f0;
+        }
+        .step-num {
+            width: 36px; height: 36px;
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: #fff;
+            border-radius: 50%;
+            display: flex; align-items: center; justify-content: center;
+            font-weight: bold; font-size: 16px;
+            flex-shrink: 0;
+        }
+        .step-title { font-size: 20px; font-weight: 600; color: #1e293b; }
+        .step-desc { color: #64748b; font-size: 14px; margin-left: 48px; margin-bottom: 16px; }
+
+        .notice {
+            background: #fef3c7;
+            border-left: 4px solid #f59e0b;
+            padding: 14px 18px;
+            border-radius: 0 8px 8px 0;
+            margin: 16px 0;
+            font-size: 14px;
+        }
+        .notice.info { background: #dbeafe; border-left-color: #3b82f6; }
+        .notice.success { background: #d1fae5; border-left-color: #10b981; }
+        .notice.danger { background: #fee2e2; border-left-color: #ef4444; }
+
+        .screenshot-placeholder {
+            background: #f1f5f9;
+            border: 2px dashed #cbd5e1;
+            border-radius: 8px;
+            padding: 30px;
+            text-align: center;
+            color: #94a3b8;
+            margin: 12px 0;
+        }
+
+        code {
+            background: #f1f5f9;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-family: "Consolas", "Monaco", monospace;
+            font-size: 13px;
+            color: #d946ef;
+        }
+        pre {
+            background: #0f172a;
+            color: #e2e8f0;
+            padding: 18px 22px;
+            border-radius: 10px;
+            overflow-x: auto;
+            font-family: "Consolas", "Monaco", monospace;
+            font-size: 13px;
+            line-height: 1.7;
+            margin: 12px 0;
+        }
+        pre .comment { color: #64748b; }
+        pre .cmd { color: #22d3ee; }
+        pre .output { color: #86efac; }
+        pre .warn { color: #fcd34d; }
+
+        ol, ul { margin-left: 24px; margin-top: 8px; }
+        li { margin-bottom: 8px; }
+
+        .two-col {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 16px;
+            margin: 16px 0;
+        }
+        .col-card {
+            border: 1px solid #e2e8f0;
+            border-radius: 10px;
+            padding: 20px;
+        }
+        .col-card h4 { color: #1e293b; margin-bottom: 10px; }
+        .col-card p { color: #64748b; font-size: 14px; }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 12px 0;
+            font-size: 14px;
+        }
+        th, td {
+            border: 1px solid #e2e8f0;
+            padding: 10px 14px;
+            text-align: left;
+        }
+        th { background: #f8fafc; font-weight: 600; }
+
+        .btn-copy {
+            display: inline-block;
+            background: #3b82f6;
+            color: #fff;
+            padding: 6px 14px;
+            border-radius: 6px;
+            font-size: 12px;
+            cursor: pointer;
+            border: none;
+            margin-left: 8px;
+        }
+        .btn-copy:hover { background: #2563eb; }
+
+        .footer {
+            background: #f8fafc;
+            padding: 30px 40px;
+            text-align: center;
+            color: #64748b;
+            font-size: 13px;
+        }
+
+        @media print {
+            body { background: #fff; padding: 0; }
+            .container { box-shadow: none; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>📊 私募基金业绩展板</h1>
+            <p>阿里云 / 腾讯云 服务器部署教程（个人版）</p>
+        </div>
+
+        <div class="content">
+
+            <!-- 准备工作 -->
+            <div class="step">
+                <div class="step-header">
+                    <div class="step-num">0</div>
+                    <div class="step-title">准备工作</div>
+                </div>
+                <div class="notice info">
+                    <strong>你需要准备：</strong>
+                    <ul>
+                        <li>一台云服务器（阿里云/腾讯云，2核2G内存即可）</li>
+                        <li>一个域名（可选，没有就用IP访问）</li>
+                        <li>本地电脑已安装 Git（用于上传代码）</li>
+                        <li>项目代码已准备好（本教程假设代码在 <code>G:\vibe coding\smxgc-vibe</code>）</li>
+                    </ul>
+                </div>
+                <div class="two-col">
+                    <div class="col-card">
+                        <h4>🖥️ 推荐服务器配置</h4>
+                        <p>2核 CPU / 2G 内存 / 50G SSD / 3M 带宽<br>系统：Ubuntu 22.04 LTS<br>费用：约 100元/年（新用户更便宜）</p>
+                    </div>
+                    <div class="col-card">
+                        <h4>🌐 域名（可选）</h4>
+                        <p>没有域名直接用 IP 地址访问<br>有域名可以配置 HTTPS 更安全<br>国内域名需备案（约 7-20 天）</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 第一步 -->
+            <div class="step">
+                <div class="step-header">
+                    <div class="step-num">1</div>
+                    <div class="step-title">购买云服务器</div>
+                </div>
+                <p class="step-desc">阿里云和腾讯云都有轻量应用服务器，价格便宜、配置简单，适合个人使用。</p>
+
+                <h4>阿里云购买步骤：</h4>
+                <ol>
+                    <li>打开 <a href="https://www.aliyun.com" target="_blank">aliyun.com</a>，登录账号</li>
+                    <li>搜索"轻量应用服务器"，进入购买页面</li>
+                    <li>选择配置：
+                        <ul>
+                            <li>地域：选择离你最近的（如华北2北京、华东1杭州）</li>
+                            <li>镜像：选择 <strong>Ubuntu 22.04</strong></li>
+                            <li>套餐：2核2G，50G SSD，3M带宽（约99元/年）</li>
+                        </ul>
+                    </li>
+                    <li>点击购买，完成支付</li>
+                    <li>进入控制台 → 轻量应用服务器 → 找到你的服务器</li>
+                </ol>
+
+                <div class="screenshot-placeholder">📷 此处为阿里云控制台截图位置<br>找到你的服务器实例，记录公网 IP 地址</div>
+
+                <div class="notice">
+                    <strong>重要：</strong>购买完成后，在控制台找到服务器的<strong>公网 IP 地址</strong>（如 123.45.67.89），后面会频繁用到。同时设置好<strong>登录密码</strong>或准备好密钥文件。
+                </div>
+            </div>
+
+            <!-- 第二步 -->
+            <div class="step">
+                <div class="step-header">
+                    <div class="step-num">2</div>
+                    <div class="step-title">连接服务器 & 安装环境</div>
+                </div>
+                <p class="step-desc">用 SSH 工具连接到你的云服务器，安装 Node.js 和 PM2。</p>
+
+                <h4>2.1 连接服务器</h4>
+                <p>Windows 用户推荐使用 <strong>Termius</strong> 或 <strong>Xshell</strong>，Mac 用户直接用终端。</p>
+
+                <pre><span class="comment"># Windows 打开 PowerShell，Mac 打开终端，执行：</span>
+<span class="cmd">ssh root@你的服务器IP</span>
+
+<span class="comment"># 示例：</span>
+<span class="cmd">ssh root@123.45.67.89</span>
+
+<span class="comment"># 然后输入密码（输入时不会显示任何字符，正常）</span>
+<span class="output">Welcome to Ubuntu 22.04.3 LTS</span></pre>
+
+                <h4>2.2 安装 Node.js</h4>
+                <pre><span class="comment"># 更新软件包列表</span>
+<span class="cmd">apt update && apt upgrade -y</span>
+
+<span class="comment"># 安装 Node.js 20（LTS 长期支持版）</span>
+<span class="cmd">curl -fsSL https://deb.nodesource.com/setup_20.x | bash -</span>
+<span class="cmd">apt install -y nodejs</span>
+
+<span class="comment"># 验证安装</span>
+<span class="cmd">node -v</span>
+<span class="output">v20.x.x</span>
+
+<span class="cmd">npm -v</span>
+<span class="output">10.x.x</span></pre>
+
+                <h4>2.3 安装 PM2（进程管理器）</h4>
+                <pre><span class="cmd">npm install -g pm2</span>
+
+<span class="comment"># 验证</span>
+<span class="cmd">pm2 -v</span>
+<span class="output">5.x.x</span></pre>
+
+                <h4>2.4 安装 Nginx（Web 服务器）</h4>
+                <pre><span class="cmd">apt install -y nginx</span>
+
+<span class="comment"># 验证 Nginx 是否运行</span>
+<span class="cmd">systemctl status nginx</span>
+
+<span class="comment"># 在浏览器访问你的服务器 IP，应该能看到 Nginx 欢迎页面</span>
+<span class="output">http://你的服务器IP</span></pre>
+
+                <div class="notice success">
+                    如果浏览器能打开 IP 看到 Nginx 欢迎页，说明服务器环境已经准备就绪！
+                </div>
+            </div>
+
+            <!-- 第三步 -->
+            <div class="step">
+                <div class="step-header">
+                    <div class="step-num">3</div>
+                    <div class="step-title">上传项目代码到服务器</div>
+                </div>
+                <p class="step-desc">把本地项目代码上传到服务器的 /var/www 目录下。</p>
+
+                <h4>3.1 在服务器上创建项目目录</h4>
+                <pre><span class="cmd">mkdir -p /var/www/smxgc</span>
+<span class="cmd">cd /var/www/smxgc</span></pre>
+
+                <h4>3.2 上传代码（两种方式选一种）</h4>
+
+                <p><strong>方式 A：使用 Git（推荐，如果你有 Git 仓库）</strong></p>
+                <pre><span class="comment"># 在服务器上克隆代码</span>
+<span class="cmd">git clone https://github.com/你的用户名/你的仓库.git .</span>
+
+<span class="comment"># 如果没有 Git 仓库，先在本地初始化并推送</span>
+<span class="comment"># 本地 PowerShell 执行：</span>
+<span class="cmd">cd "G:\vibe coding\smxgc-vibe"</span>
+<span class="cmd">git init</span>
+<span class="cmd">git add .</span>
+<span class="cmd">git commit -m "first commit"</span>
+<span class="cmd">git branch -M main</span>
+<span class="cmd">git remote add origin https://github.com/你的用户名/仓库名.git</span>
+<span class="cmd">git push -u origin main</span></pre>
+
+                <p><strong>方式 B：使用 scp 命令直接上传（不用 Git）</strong></p>
+                <pre><span class="comment"># 在本地 Windows PowerShell 中执行（注意路径中的空格）：</span>
+<span class="cmd">scp -r "G:\vibe coding\smxgc-vibe\*" root@你的服务器IP:/var/www/smxgc/</span>
+
+<span class="comment"># 上传可能较慢，稍等片刻...</span></pre>
+
+                <div class="notice">
+                    <strong>注意：</strong>如果上传后服务器上没有 <code>node_modules</code> 文件夹，那是正常的（我们本地上传时通常不带上它）。后面会在服务器上执行 <code>npm install</code>。
+                </div>
+            </div>
+
+            <!-- 第四步 -->
+            <div class="step">
+                <div class="step-header">
+                    <div class="step-num">4</div>
+                    <div class="step-title">在服务器上安装依赖 & 构建</div>
+                </div>
+                <p class="step-desc">连接服务器，进入项目目录，安装依赖并构建生产版本。</p>
+
+                <pre><span class="comment"># 进入项目目录</span>
+<span class="cmd">cd /var/www/smxgc</span>
+
+<span class="comment"># 安装项目依赖（会在服务器上创建 node_modules）</span>
+<span class="cmd">npm install</span>
+
+<span class="comment"># 安装 Prisma CLI（用于数据库操作）</span>
+<span class="cmd">npm install -g prisma</span>
+
+<span class="comment"># 生成 Prisma 客户端</span>
+<span class="cmd">npx prisma generate</span>
+
+<span class="comment"># 推送数据库结构（SQLite 文件会自动创建）</span>
+<span class="cmd">npx prisma db push</span>
+
+<span class="comment"># 构建生产版本</span>
+<span class="cmd">npm run build</span>
+
+<span class="comment"># 构建成功后，你会看到 .next 文件夹</span>
+<span class="cmd">ls -la .next</span></pre>
+
+                <div class="notice info">
+                    <strong>关于数据库：</strong>本教程使用 SQLite（文件数据库），数据保存在服务器上的 <code>dev.db</code> 文件中。个人使用完全足够，无需额外安装 MySQL/PostgreSQL。数据会自动备份在文件中。
+                </div>
+            </div>
+
+            <!-- 第五步 -->
+            <div class="step">
+                <div class="step-header">
+                    <div class="step-num">5</div>
+                    <div class="step-title">配置环境变量</div>
+                </div>
+                <p class="step-desc">修改生产环境的环境变量，特别是密码和密钥必须改掉默认值。</p>
+
+                <pre><span class="comment"># 编辑 .env 文件</span>
+<span class="cmd">nano /var/www/smxgc/.env</span>
+
+<span class="comment"># 把内容改成下面这样（按实际情况修改）：</span></pre>
+
+                <pre>DATABASE_URL="file:./dev.db"
+ADMIN_PASSWORD="这里设置一个复杂密码，至少8位"
+JWT_SECRET="这里设置一个随机字符串，至少32个字符"</pre>
+
+                <div class="notice danger">
+                    <strong>安全警告：</strong><br>
+                    • ADMIN_PASSWORD 不要用默认的 admin123456<br>
+                    • JWT_SECRET 推荐用命令生成随机字符串：<code>openssl rand -base64 32</code><br>
+                    • 不要把 .env 文件提交到 Git 仓库
+                </div>
+
+                <pre><span class="comment"># 保存文件：按 Ctrl+O，然后回车，再按 Ctrl+X 退出</span></pre>
+            </div>
+
+            <!-- 第六步 -->
+            <div class="step">
+                <div class="step-header">
+                    <div class="step-num">6</div>
+                    <div class="step-title">启动应用（PM2 守护进程）</div>
+                </div>
+                <p class="step-desc">用 PM2 启动 Next.js 应用，这样关闭 SSH 后网站也能持续运行。</p>
+
+                <pre><span class="comment"># 进入项目目录</span>
+<span class="cmd">cd /var/www/smxgc</span>
+
+<span class="comment"># 用 PM2 启动应用（指定端口 3000）</span>
+<span class="cmd">pm2 start npm --name "smxgc" -- start -- --port 3000</span>
+
+<span class="comment"># 查看运行状态</span>
+<span class="cmd">pm2 status</span>
+
+<span class="comment"># 你会看到 smxgc 状态是 online，说明启动成功</span>
+<span class="output">┌─────┬────────┬────────┬─────────┬──────────┐
+│ id  │ name   │ status │ cpu     │ memory   │
+├─────┼────────┼────────┼─────────┼──────────┤
+│ 0   │ smxgc  │ online │ 0.2%    │ 85.4MB   │
+└─────┴────────┴────────┴─────────┴──────────┘</span>
+
+<span class="comment"># 保存 PM2 配置（服务器重启后自动启动）</span>
+<span class="cmd">pm2 save</span>
+<span class="cmd">pm2 startup</span>
+<span class="comment"># 执行上面命令后，会输出一条命令，复制执行它即可</span></pre>
+
+                <div class="notice success">
+                    此时，你可以在浏览器访问 <code>http://你的服务器IP:3000</code> 看看是否能打开网站！
+                </div>
+            </div>
+
+            <!-- 第七步 -->
+            <div class="step">
+                <div class="step-header">
+                    <div class="step-num">7</div>
+                    <div class="step-title">配置 Nginx 反向代理（用 80 端口访问）</div>
+                </div>
+                <p class="step-desc">现在需要用 80 端口访问，而不是 3000。配置 Nginx 把 80 端口的请求转发到 3000 端口。</p>
+
+                <pre><span class="comment"># 创建 Nginx 配置文件</span>
+<span class="cmd">nano /etc/nginx/sites-available/smxgc</span>
+
+<span class="comment"># 粘贴以下内容：</span></pre>
+
+                <pre>server {
+    listen 80;
+    server_name _;  <span class="comment"># 如果有域名，改成你的域名</span>
+
+    location / {
+        proxy_pass http://127.0.0.1:3000;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_cache_bypass $http_upgrade;
+    }
+
+    <span class="comment"># 允许上传大文件（Excel 导入用）</span>
+    client_max_body_size 50M;
+}</pre>
+
+                <pre><span class="comment"># 启用配置</span>
+<span class="cmd">ln -s /etc/nginx/sites-available/smxgc /etc/nginx/sites-enabled/</span>
+
+<span class="comment"># 删除默认配置（避免冲突）</span>
+<span class="cmd">rm /etc/nginx/sites-enabled/default</span>
+
+<span class="comment"># 测试配置是否正确</span>
+<span class="cmd">nginx -t</span>
+
+<span class="comment"># 重启 Nginx</span>
+<span class="cmd">systemctl restart nginx</span></pre>
+
+                <div class="notice success">
+                    <strong>🎉 完成！</strong>现在用浏览器直接访问 <code>http://你的服务器IP</code>（不需要加 :3000）即可打开网站！
+                </div>
+            </div>
+
+            <!-- 第八步 -->
+            <div class="step">
+                <div class="step-header">
+                    <div class="step-num">8</div>
+                    <div class="step-title">配置 HTTPS（可选但强烈建议）</div>
+                </div>
+                <p class="step-desc">如果你有域名，建议配置 HTTPS，数据更安全，浏览器也不会显示"不安全"。</p>
+
+                <h4>8.1 先解析域名到服务器</h4>
+                <ol>
+                    <li>登录你的域名服务商（如阿里云域名、腾讯云 DNSPod）</li>
+                    <li>添加一条 A 记录：主机记录填 <code>@</code> 或 <code>www</code>，记录值填你的服务器 IP</li>
+                    <li>等待 5-10 分钟让 DNS 生效</li>
+                </ol>
+
+                <div class="screenshot-placeholder">📷 域名 DNS 解析设置截图位置</div>
+
+                <h4>8.2 安装 SSL 证书（Let's Encrypt 免费证书）</h4>
+                <pre><span class="comment"># 安装 certbot</span>
+<span class="cmd">apt install -y certbot python3-certbot-nginx</span>
+
+<span class="comment"># 修改 Nginx 配置中的 server_name</span>
+<span class="cmd">nano /etc/nginx/sites-available/smxgc</span>
+
+<span class="comment"># 把 server_name _; 改成你的域名，例如：</span>
+<span class="comment"># server_name smxgc.yourdomain.com;</span>
+
+<span class="comment"># 申请证书（把域名换成你的）</span>
+<span class="cmd">certbot --nginx -d smxgc.yourdomain.com</span>
+
+<span class="comment"># 按提示操作，选择 redirect（自动把 HTTP 转到 HTTPS）</span>
+
+<span class="comment"># 测试自动续期</span>
+<span class="cmd">certbot renew --dry-run</span></pre>
+
+                <div class="notice success">
+                    现在访问 <code>https://你的域名</code> 就能看到绿色小锁标志了！证书会自动续期，无需手动维护。
+                </div>
+            </div>
+
+            <!-- 第九步 -->
+            <div class="step">
+                <div class="step-header">
+                    <div class="step-num">9</div>
+                    <div class="step-title">日常维护命令</div>
+                </div>
+                <p class="step-desc">部署完成后，你可能需要用到这些命令。</p>
+
+                <table>
+                    <tr>
+                        <th>操作</th>
+                        <th>命令</th>
+                    </tr>
+                    <tr>
+                        <td>查看应用日志</td>
+                        <td><code>pm2 logs smxgc</code></td>
+                    </tr>
+                    <tr>
+                        <td>重启应用</td>
+                        <td><code>pm2 restart smxgc</code></td>
+                    </tr>
+                    <tr>
+                        <td>停止应用</td>
+                        <td><code>pm2 stop smxgc</code></td>
+                    </tr>
+                    <tr>
+                        <td>更新代码后重新构建</td>
+                        <td><code>cd /var/www/smxgc && git pull && npm install && npm run build && pm2 restart smxgc</code></td>
+                    </tr>
+                    <tr>
+                        <td>查看 Nginx 日志</td>
+                        <td><code>tail -f /var/log/nginx/access.log</code></td>
+                    </tr>
+                    <tr>
+                        <td>备份数据库文件</td>
+                        <td><code>cp /var/www/smxgc/dev.db /var/www/smxgc/dev.db.backup.$(date +%Y%m%d)</code></td>
+                    </tr>
+                    <tr>
+                        <td>查看服务器资源</td>
+                        <td><code>htop</code> 或 <code>free -h</code></td>
+                    </tr>
+                </table>
+            </div>
+
+            <!-- 故障排查 -->
+            <div class="step">
+                <div class="step-header">
+                    <div class="step-num">!</div>
+                    <div class="step-title">常见问题排查</div>
+                </div>
+
+                <h4>问题 1：访问 IP 显示不了网站</h4>
+                <pre><span class="comment"># 检查防火墙是否放行了 80 和 3000 端口</span>
+<span class="cmd">ufw status</span>
+<span class="cmd">ufw allow 80</span>
+<span class="cmd">ufw allow 443</span>
+<span class="cmd">ufw allow 3000</span>
+
+<span class="comment"># 阿里云/腾讯云控制台也有安全组，需要去网页控制台放行端口</span></pre>
+
+                <h4>问题 2：npm install 报错</h4>
+                <pre><span class="comment"># 可能是内存不足，增加 swap 空间</span>
+<span class="cmd">fallocate -l 2G /swapfile</span>
+<span class="cmd">chmod 600 /swapfile</span>
+<span class="cmd">mkswap /swapfile</span>
+<span class="cmd">swapon /swapfile</span></pre>
+
+                <h4>问题 3：上传 Excel 失败</h4>
+                <pre><span class="comment"># 检查 Nginx 的 client_max_body_size 是否设置足够大</span>
+<span class="comment"># 检查 .env 中的 DATABASE_URL 是否正确</span>
+<span class="comment"># 检查 pm2 logs 看具体错误</span></pre>
+
+                <h4>问题 4：页面加载很慢</h4>
+                <pre><span class="comment"># 可能是带宽不足，Next.js 首次加载需要下载 JS</span>
+<span class="comment"># 建议开启 Nginx gzip 压缩</span>
+<span class="cmd">nano /etc/nginx/nginx.conf</span>
+<span class="comment"># 找到 gzip 相关配置，确保 gzip on;</span></pre>
+            </div>
+
+            <!-- 总结 -->
+            <div class="step">
+                <div class="step-header">
+                    <div class="step-num" style="background: linear-gradient(135deg, #22c55e, #16a34a);">✓</div>
+                    <div class="step-title">部署完成总结</div>
+                </div>
+                <div class="notice success">
+                    恭喜你！按照以上步骤，你的网站应该已经成功部署到云服务器上了。<br><br>
+                    <strong>访问地址：</strong>
+                    <ul>
+                        <li>HTTP: <code>http://你的服务器IP</code></li>
+                        <li>HTTPS（有域名）: <code>https://你的域名</code></li>
+                        <li>管理后台: <code>http://你的服务器IP/admin</code></li>
+                    </ul>
+                </div>
+            </div>
+
+        </div>
+
+        <div class="footer">
+            <p>私募基金业绩展板 · 云服务器部署教程</p>
+            <p style="margin-top: 6px;">如有问题，请检查每步的命令输出，或查看 PM2/Nginx 日志定位原因</p>
+        </div>
+    </div>
+</body>
+</html>

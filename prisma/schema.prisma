@@ -1,0 +1,35 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model FundProduct {
+  id                         Int      @id @default(autoincrement())
+  dataDate                   DateTime // 数据所属日期，来源于文件名
+  strategyType               String   // 策略标识，如 "index-enhanced-300"
+  fundManager                String   // 基金管理人
+  managerScale               String   // 原始管理人规模文本
+  isLargeScale               Boolean  // 是否为"100亿元以上"
+  productName                String   // 产品名称
+  strategyCategory           String?  // 策略分类（二级分类）
+  weeklyReturn               Float?   // 近一周收益（%）
+  monthlyReturn              Float?   // 近一月收益（%）
+  ytdReturn                  Float?   // 今年以来收益（%）
+  annualizedReturnSinceInception Float? // 成立以来年化收益（%）
+  ytdMaxDrawdown             Float?   // 今年以来最大回撤（%）
+  inceptionMaxDrawdown       Float?   // 成立以来最大回撤（%）
+  annualizedVolatility       Float?   // 成立以来年化波动率（%）
+  sharpeRatio                Float?   // 成立以来夏普比率
+
+  createdAt                  DateTime @default(now())
+
+  @@index([dataDate])
+  @@index([dataDate, strategyType])
+}

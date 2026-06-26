@@ -447,7 +447,7 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
                     {Object.entries(importProgress.result.imported).map(([strategy, count]) => (
                       <li key={strategy} className="text-green-200 flex justify-between">
                         <span>{STRATEGY_NAME_MAP[strategy] || strategy}</span>
-                        <span className="font-mono">{count} 条</span>
+                        <span className="font-mono">{String(count)} 条</span>
                       </li>
                     ))}
                   </ul>

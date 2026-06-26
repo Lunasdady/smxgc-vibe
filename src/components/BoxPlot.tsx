@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { useRouter } from 'next/navigation';
 import { StrategyOverview, STRATEGY_NAME_MAP } from '@/lib/types';
 import { formatPercentage } from '@/lib/stats';
@@ -12,8 +13,8 @@ interface BoxPlotProps {
 }
 
 interface TooltipData {
-  x: number;
-  y: number;
+  clientX: number;
+  clientY: number;
   visible: boolean;
 }
 
@@ -21,7 +22,7 @@ export default function BoxPlot({ strategy, onClick, groupName }: BoxPlotProps) 
   const router = useRouter();
   const svgRef = useRef<SVGSVGElement>(null);
   const cardRef = useRef<HTMLDivElement>(null);
-  const [tooltip, setTooltip] = useState<TooltipData>({ x: 0, y: 0, visible: false });
+  const [tooltip, setTooltip] = useState<TooltipData>({ clientX: 0, clientY: 0, visible: false });
   const [isTouchDevice, setIsTouchDevice] = useState(false);
 
   useEffect(() => {
@@ -63,43 +64,26 @@ export default function BoxPlot({ strategy, onClick, groupName }: BoxPlotProps) 
 
   const handleMouseMove = (e: React.MouseEvent<SVGSVGElement>) => {
     if (isTouchDevice) return;
-    const rect = svgRef.current?.getBoundingClientRect();
-    if (rect) {
-      const x = e.clientX - rect.left;
-      const y = e.clientY - rect.top;
-      
-      // Ensure tooltip stays within bounds
-      const tooltipWidth = 180;
-      const tooltipHeight = 160;
-      const adjustedX = Math.max(0, Math.min(x + 16, rect.width - tooltipWidth));
-      const adjustedY = Math.max(0, y - tooltipHeight / 2);
-      
-      setTooltip({
-        x: adjustedX,
-        y: adjustedY,
-        visible: true,
-      });
-    }
+    setTooltip({
+      clientX: e.clientX,
+      clientY: e.clientY,
+      visible: true,
+    });
   };
 
   const handleMouseLeave = () => {
     if (isTouchDevice) return;
-    setTooltip({ x: 0, y: 0, visible: false });
+    setTooltip({ clientX: 0, clientY: 0, visible: false });
   };
 
   const handleSvgClick = (e: React.MouseEvent<SVGSVGElement>) => {
     if (!isTouchDevice) return;
     e.stopPropagation();
-    const rect = svgRef.current?.getBoundingClientRect();
-    if (rect) {
-      const x = (e.clientX - rect.left);
-      const y = (e.clientY - rect.top);
-      setTooltip(prev => ({
-        x: Math.max(0, Math.min(x + 16, rect.width - 180)),
-        y: Math.max(0, y - 80),
-        visible: !prev.visible,
-      }));
-    }
+    setTooltip(prev => ({
+      clientX: prev.clientX || e.clientX,
+      clientY: prev.clientY || e.clientY,
+      visible: !prev.visible,
+    }));
   };
 
   const handleCardClick = (e: React.MouseEvent) => {
@@ -107,7 +91,7 @@ export default function BoxPlot({ strategy, onClick, groupName }: BoxPlotProps) 
     if (isTouchDevice && tooltip.visible) {
       const target = e.target as HTMLElement;
       if (!target.closest('svg')) {
-        setTooltip({ x: 0, y: 0, visible: false });
+        setTooltip({ clientX: 0, clientY: 0, visible: false });
         return;
       }
     }
@@ -144,16 +128,15 @@ export default function BoxPlot({ strategy, onClick, groupName }: BoxPlotProps) 
       </div>
 
       {/* Box Plot SVG */}
-      <div className="relative z-10">
-        <svg
-          ref={svgRef}
-          width="100%"
-          viewBox={`0 0 ${chartWidth} ${chartHeight}`}
-          className="overflow-hidden"
-          onMouseMove={handleMouseMove}
-          onMouseLeave={handleMouseLeave}
-          onClick={handleSvgClick}
-        >
+      <svg
+        ref={svgRef}
+        width="100%"
+        viewBox={`0 0 ${chartWidth} ${chartHeight}`}
+        className="overflow-hidden relative z-10"
+        onMouseMove={handleMouseMove}
+        onMouseLeave={handleMouseLeave}
+        onClick={handleSvgClick}
+      >
           {/* Gradient definitions */}
           <defs>
             <linearGradient id="boxGradient" x1="0%" y1="0%" x2="100%" y2="0%">
@@ -278,35 +261,20 @@ export default function BoxPlot({ strategy, onClick, groupName }: BoxPlotProps) 
           )}
         </svg>
 
-        {/* Tooltip */}
-        {tooltip.visible && (
-          <div
-            className="absolute z-50 pointer-events-none transition-opacity duration-150"
-            style={{
-              left: tooltip.x,
-              top: tooltip.y,
-              transform: 'translateY(-50%)',
-            }}
-          >
-            <div className="bg-gradient-to-br from-slate-800/95 to-slate-900/95 backdrop-blur-md border border-cyan-400/30 rounded-xl px-3 py-2 shadow-[0_8px_32px_rgba(0,0,0,0.4)] w-full max-w-[170px]">
-              {/* Tooltip arrow */}
-              <div className="absolute -left-1.5 top-1/2 -translate-y-1/2 w-3 h-3 bg-slate-800 border-l border-b border-cyan-400/30 rotate-45" />
-              
-              <div className="text-xs font-semibold text-cyan-300 mb-2 pb-2 border-b border-slate-600/50 flex items-center gap-2">
-                <div className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse" />
-                {strategyName}
-              </div>
-              <div className="space-y-1.5">
-                <TooltipRow label="最大值" value={max} />
-                <TooltipRow label="75分位" value={q75} />
-                <TooltipRow label="平均数" value={mean} isMean />
-                <TooltipRow label="25分位" value={q25} />
-                <TooltipRow label="最小值" value={min} />
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
+      {/* Tooltip via Portal */}
+      {tooltip.visible && createPortal(
+        <BoxPlotTooltip
+          strategyName={strategyName}
+          min={min}
+          q25={q25}
+          mean={mean}
+          q75={q75}
+          max={max}
+          clientX={tooltip.clientX}
+          clientY={tooltip.clientY}
+        />,
+        document.body
+      )}
 
       {/* Footer */}
       <div className="mt-3 flex items-center justify-between relative z-10">
@@ -328,6 +296,67 @@ export default function BoxPlot({ strategy, onClick, groupName }: BoxPlotProps) 
           <span>查看明细</span>
           <span className="transition-transform duration-200 group-hover:translate-x-0.5">→</span>
         </button>
+      </div>
+    </div>
+  );
+}
+
+function BoxPlotTooltip({
+  strategyName,
+  min,
+  q25,
+  mean,
+  q75,
+  max,
+  clientX,
+  clientY,
+}: {
+  strategyName: string;
+  min: number | null;
+  q25: number | null;
+  mean: number | null;
+  q75: number | null;
+  max: number | null;
+  clientX: number;
+  clientY: number;
+}) {
+  const tooltipWidth = 170;
+  const tooltipHeight = 160;
+
+  let left = clientX + 16;
+  let top = clientY - tooltipHeight / 2;
+
+  // Prevent overflow beyond viewport
+  if (left + tooltipWidth > window.innerWidth - 8) {
+    left = clientX - tooltipWidth - 16;
+  }
+  if (top + tooltipHeight > window.innerHeight - 8) {
+    top = window.innerHeight - tooltipHeight - 8;
+  }
+  if (top < 8) {
+    top = 8;
+  }
+  if (left < 8) {
+    left = 8;
+  }
+
+  return (
+    <div
+      className="fixed z-[9999] pointer-events-none"
+      style={{ left, top }}
+    >
+      <div className="bg-gradient-to-br from-slate-800/95 to-slate-900/95 backdrop-blur-md border border-cyan-400/30 rounded-xl px-3 py-2 shadow-[0_8px_32px_rgba(0,0,0,0.4)] w-[170px]">
+        <div className="text-xs font-semibold text-cyan-300 mb-2 pb-2 border-b border-slate-600/50 flex items-center gap-2">
+          <div className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse" />
+          {strategyName}
+        </div>
+        <div className="space-y-1.5">
+          <TooltipRow label="最大值" value={max} />
+          <TooltipRow label="75分位" value={q75} />
+          <TooltipRow label="平均数" value={mean} isMean />
+          <TooltipRow label="25分位" value={q25} />
+          <TooltipRow label="最小值" value={min} />
+        </div>
       </div>
     </div>
   );

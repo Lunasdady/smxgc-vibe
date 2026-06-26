@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { useAppStore } from '@/lib/store';
 import { STRATEGY_NAME_MAP, GroupSummary, FundProduct } from '@/lib/types';
 import { formatPercentage } from '@/lib/stats';
@@ -387,7 +388,7 @@ function renderMobileCell(product: FundProduct, field: keyof FundProduct): React
 // Box Plot Card for group summary
 function BoxPlotCard({ title, stats }: { title: string; stats: any }) {
   const svgRef = useRef<SVGSVGElement>(null);
-  const [tooltip, setTooltip] = useState<{ x: number; y: number; visible: boolean }>({ x: 0, y: 0, visible: false });
+  const [tooltip, setTooltip] = useState<{ clientX: number; clientY: number; visible: boolean }>({ clientX: 0, clientY: 0, visible: false });
 
   if (stats.count === 0) {
     return (
@@ -422,21 +423,15 @@ function BoxPlotCard({ title, stats }: { title: string; stats: any }) {
   const xMax = mapX(dataMax);
 
   const handleMouseMove = (e: React.MouseEvent<SVGSVGElement>) => {
-    const rect = svgRef.current?.getBoundingClientRect();
-    if (rect) {
-      const tooltipWidth = 160;
-      const rawX = e.clientX - rect.left;
-      const rawY = e.clientY - rect.top;
-      setTooltip({
-        x: Math.max(0, Math.min(rawX + 12, rect.width - tooltipWidth)),
-        y: Math.max(0, rawY - 70),
-        visible: true,
-      });
-    }
+    setTooltip({
+      clientX: e.clientX,
+      clientY: e.clientY,
+      visible: true,
+    });
   };
 
   const handleMouseLeave = () => {
-    setTooltip({ x: 0, y: 0, visible: false });
+    setTooltip({ clientX: 0, clientY: 0, visible: false });
   };
 
   return (
@@ -448,7 +443,7 @@ function BoxPlotCard({ title, stats }: { title: string; stats: any }) {
         </h3>
         <span className="text-xs text-dark-textDim font-mono bg-dark-bg/50 px-2 py-0.5 rounded">{stats.count} 只</span>
       </div>
-      <div className="relative overflow-hidden">
+      <div className="relative">
         <svg
           ref={svgRef}
           width="100%"
@@ -513,29 +508,15 @@ function BoxPlotCard({ title, stats }: { title: string; stats: any }) {
           )}
         </svg>
         
-        {/* Tooltip */}
-        {tooltip.visible && (
-          <div
-            className="absolute z-50 pointer-events-none transition-opacity duration-150"
-            style={{
-              left: tooltip.x,
-              top: tooltip.y,
-            }}
-          >
-            <div className="bg-gradient-to-br from-slate-800/95 to-slate-900/95 backdrop-blur-md border border-cyan-400/30 rounded-xl px-3 py-2 shadow-[0_8px_32px_rgba(0,0,0,0.4)] w-full max-w-[160px]">
-              <div className="text-xs font-semibold text-cyan-300 mb-2 pb-2 border-b border-slate-600/50 flex items-center gap-2">
-                <div className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse" />
-                {title}
-              </div>
-              <div className="space-y-1.5">
-                <TooltipRow label="最大值" value={stats.max} showIndicator />
-                <TooltipRow label="75分位" value={stats.q75} />
-                <TooltipRow label="平均数" value={stats.mean} isMean showIndicator />
-                <TooltipRow label="25分位" value={stats.q25} />
-                <TooltipRow label="最小值" value={stats.min} showIndicator />
-              </div>
-            </div>
-          </div>
+        {/* Tooltip - rendered via portal to avoid container clipping */}
+        {tooltip.visible && createPortal(
+          <BoxPlotTooltip
+            title={title}
+            stats={stats}
+            clientX={tooltip.clientX}
+            clientY={tooltip.clientY}
+          />,
+          document.body
         )}
       </div>
       <div className="mt-3 flex items-center gap-3 text-[10px] text-dark-textDim">
@@ -545,6 +526,58 @@ function BoxPlotCard({ title, stats }: { title: string; stats: any }) {
         <span className="flex items-center gap-1">
           <span className="w-1.5 h-1.5 rounded-full bg-red-400" />均值
         </span>
+      </div>
+    </div>
+  );
+}
+
+function BoxPlotTooltip({
+  title,
+  stats,
+  clientX,
+  clientY,
+}: {
+  title: string;
+  stats: any;
+  clientX: number;
+  clientY: number;
+}) {
+  const tooltipWidth = 160;
+  const tooltipHeight = 145;
+
+  let left = clientX + 14;
+  let top = clientY - tooltipHeight / 2;
+
+  // Prevent overflow beyond viewport
+  if (left + tooltipWidth > window.innerWidth - 8) {
+    left = clientX - tooltipWidth - 14;
+  }
+  if (top + tooltipHeight > window.innerHeight - 8) {
+    top = window.innerHeight - tooltipHeight - 8;
+  }
+  if (top < 8) {
+    top = 8;
+  }
+  if (left < 8) {
+    left = 8;
+  }
+
+  return (
+    <div
+      className="fixed z-[9999] pointer-events-none"
+      style={{ left, top }}
+    >
+      <div className="bg-gradient-to-br from-slate-800/95 to-slate-900/95 backdrop-blur-md border border-cyan-400/30 rounded-xl px-3 py-2 shadow-[0_8px_32px_rgba(0,0,0,0.4)] w-[160px]">
+        <div className="text-xs font-semibold text-cyan-300 mb-2 pb-2 border-b border-slate-600/50">
+          {title}
+        </div>
+        <div className="space-y-1.5">
+          <TooltipRow label="最大值" value={stats.max} />
+          <TooltipRow label="75分位" value={stats.q75} />
+          <TooltipRow label="平均数" value={stats.mean} isMean />
+          <TooltipRow label="25分位" value={stats.q25} />
+          <TooltipRow label="最小值" value={stats.min} />
+        </div>
       </div>
     </div>
   );

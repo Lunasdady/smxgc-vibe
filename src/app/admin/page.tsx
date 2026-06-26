@@ -143,6 +143,9 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
     result: any;
   }>({ importId: null, progress: 0, total: 0, current: 0, status: 'pending', message: '', result: null });
   const progressTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const [dateRange, setDateRange] = useState({ startDate: '', endDate: '' });
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<'all' | 'range'>('all');
 
   useEffect(() => {
     fetchStatus();
@@ -304,26 +307,51 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
     }
   };
 
-  const handleClearData = async () => {
-    if (!confirm('确定要清空所有数据吗？此操作不可恢复！')) {
+  const handleClearData = () => {
+    setDeleteTarget('all');
+    setShowDeleteConfirm(true);
+  };
+
+  const handleDeleteByDate = () => {
+    if (!dateRange.startDate && !dateRange.endDate) {
+      setMessage('请选择至少一个日期');
+      setTimeout(() => setMessage(''), 3000);
       return;
     }
+    setDeleteTarget('range');
+    setShowDeleteConfirm(true);
+  };
+
+  const confirmDelete = async () => {
+    setShowDeleteConfirm(false);
 
     try {
+      const body: any = {};
+      if (deleteTarget === 'all') {
+        body.all = true;
+      } else {
+        if (dateRange.startDate) body.startDate = dateRange.startDate;
+        if (dateRange.endDate) body.endDate = dateRange.endDate;
+      }
+
       const response = await fetch('/api/admin/clear', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ all: true }),
+        body: JSON.stringify(body),
       });
 
       if (response.ok) {
-        setMessage('数据已清空');
+        const data = await response.json();
+        setMessage(data.message);
         fetchStatus();
+        if (deleteTarget === 'range') {
+          setDateRange({ startDate: '', endDate: '' });
+        }
       } else {
-        setMessage('清空数据失败');
+        setMessage('删除数据失败');
       }
     } catch (error) {
-      setMessage('清空数据失败');
+      setMessage('删除数据失败');
     }
   };
 
@@ -531,13 +559,102 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
             <div className="w-1.5 h-4 rounded-full bg-red-400" />
             数据管理
           </h2>
-          <button
-            onClick={handleClearData}
-            className="px-4 py-2 bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 rounded-lg transition-colors text-sm font-medium"
-          >
-            清空所有数据
-          </button>
+
+          {/* 按日期删除 */}
+          <div className="mb-5 p-4 bg-dark-bg rounded-lg border border-dark-border">
+            <h3 className="text-xs font-semibold text-dark-textDim uppercase tracking-wider mb-3">
+              按日期范围删除
+            </h3>
+            <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-end">
+              <div className="flex-1 w-full sm:w-auto">
+                <label className="block text-[10px] text-dark-textDim mb-1">起始日期</label>
+                <input
+                  type="date"
+                  value={dateRange.startDate}
+                  onChange={(e) => setDateRange(prev => ({ ...prev, startDate: e.target.value }))}
+                  className="w-full px-3 py-2 bg-dark-card border border-dark-border rounded-lg text-dark-text text-sm focus:outline-none focus:ring-2 focus:ring-red-400/30 focus:border-red-400/50"
+                />
+              </div>
+              <div className="flex-1 w-full sm:w-auto">
+                <label className="block text-[10px] text-dark-textDim mb-1">结束日期</label>
+                <input
+                  type="date"
+                  value={dateRange.endDate}
+                  onChange={(e) => setDateRange(prev => ({ ...prev, endDate: e.target.value }))}
+                  className="w-full px-3 py-2 bg-dark-card border border-dark-border rounded-lg text-dark-text text-sm focus:outline-none focus:ring-2 focus:ring-red-400/30 focus:border-red-400/50"
+                />
+              </div>
+              <button
+                onClick={handleDeleteByDate}
+                disabled={!dateRange.startDate && !dateRange.endDate}
+                className="w-full sm:w-auto px-4 py-2 bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 rounded-lg transition-colors text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                删除选定日期数据
+              </button>
+            </div>
+            <p className="text-[10px] text-dark-textDim mt-2">
+              提示：只选起始日期则删除该日期之后的所有数据；只选结束日期则删除该日期之前的所有数据；两者都选则删除该范围内的数据。
+            </p>
+          </div>
+
+          {/* 清空所有数据 */}
+          <div className="pt-4 border-t border-dark-border">
+            <h3 className="text-xs font-semibold text-dark-textDim uppercase tracking-wider mb-3">
+              危险操作
+            </h3>
+            <button
+              onClick={handleClearData}
+              className="px-4 py-2 bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 rounded-lg transition-colors text-sm font-medium"
+            >
+              清空所有数据
+            </button>
+          </div>
         </div>
+
+        {/* 删除确认弹窗 */}
+        {showDeleteConfirm && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+            <div className="bg-dark-card border border-dark-border rounded-xl p-6 w-full max-w-md mx-4 shadow-2xl">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-10 h-10 rounded-full bg-red-500/10 flex items-center justify-center">
+                  <svg className="w-5 h-5 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                  </svg>
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-dark-text">
+                    {deleteTarget === 'all' ? '确认清空所有数据？' : '确认删除选定日期数据？'}
+                  </h3>
+                  <p className="text-xs text-dark-textDim mt-0.5">此操作不可恢复</p>
+                </div>
+              </div>
+
+              {deleteTarget === 'range' && (
+                <div className="mb-4 p-3 bg-dark-bg rounded-lg border border-dark-border">
+                  <p className="text-xs text-dark-textDim mb-1">即将删除的日期范围：</p>
+                  <p className="text-sm text-red-400 font-medium">
+                    {dateRange.startDate || '最早'} ~ {dateRange.endDate || '最晚'}
+                  </p>
+                </div>
+              )}
+
+              <div className="flex gap-3 justify-end">
+                <button
+                  onClick={() => setShowDeleteConfirm(false)}
+                  className="px-4 py-2 bg-dark-bg border border-dark-border text-dark-text rounded-lg hover:bg-dark-cardHover transition-colors text-sm"
+                >
+                  取消
+                </button>
+                <button
+                  onClick={confirmDelete}
+                  className="px-4 py-2 bg-red-500 hover:bg-red-400 text-white rounded-lg transition-colors text-sm font-medium"
+                >
+                  确认删除
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </main>
     </div>
   );

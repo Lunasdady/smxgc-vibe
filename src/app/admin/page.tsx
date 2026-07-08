@@ -4,7 +4,21 @@ import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { extractDataDateFromFilename } from '@/lib/stats';
 import { STRATEGY_NAME_MAP } from '@/lib/types';
+import { useAppStore } from '@/lib/store';
 import dayjs from 'dayjs';
+
+// 直接刷新全局日期列表
+const refreshGlobalDates = async () => {
+  try {
+    const response = await fetch('/api/data/dates');
+    const data = await response.json();
+    if (data.dates) {
+      useAppStore.getState().setAvailableDates(data.dates);
+    }
+  } catch (error) {
+    console.error('Failed to refresh dates:', error);
+  }
+};
 
 export default function AdminPage() {
   const router = useRouter();
@@ -295,9 +309,7 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
               setMessage(data.message || '数据导入成功！');
               fetchStatus();
               // 刷新全局日期列表
-              if (typeof window !== 'undefined' && (window as any).refreshDates) {
-                (window as any).refreshDates();
-              }
+              refreshGlobalDates();
               setFile(null);
               setPreview(null);
               
@@ -364,9 +376,7 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
         setMessage(data.message);
         fetchStatus();
         // 刷新全局日期列表
-        if (typeof window !== 'undefined' && (window as any).refreshDates) {
-          (window as any).refreshDates();
-        }
+        refreshGlobalDates();
         if (deleteTarget === 'range') {
           setDateRange({ startDate: '', endDate: '' });
         }

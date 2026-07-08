@@ -1,13 +1,47 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/db';
 import { calculateFiveNumberStats } from '@/lib/stats';
-import { STRATEGY_NAME_MAP } from '@/lib/types';
+import { STRATEGY_NAME_MAP, getFuturesStrategies } from '@/lib/types';
 import dayjs from 'dayjs';
+
+// 新字段到旧字段的映射（非指增策略在日期>=2026-07-08时回退使用）
+const NEW_TO_OLD_METRIC_MAP: Record<string, string> = {
+  excessReturn1w: 'weeklyReturn',
+  excessReturn3m: 'monthlyReturn',
+  excessReturnYtd: 'ytdReturn',
+  excessAnnualizedReturn: 'annualizedReturnSinceInception',
+  excessYtdMaxDrawdown: 'ytdMaxDrawdown',
+  excessInceptionMaxDrawdown: 'inceptionMaxDrawdown',
+  excessAnnualizedVolatility: 'annualizedVolatility',
+  excessSharpeRatio: 'sharpeRatio',
+};
+
+function getActualMetric(metric: string, strategyType: string, dataDate: string): string {
+  const date = new Date(dataDate);
+  const cutoffDate = new Date('2026-07-08');
+  if (date < cutoffDate) return metric;
+
+  const indexEnhancedTypes = [
+    'index-enhanced-300',
+    'index-enhanced-500',
+    'index-enhanced-1000',
+    'index-enhanced-2000',
+    'index-enhanced-alternative',
+  ];
+  const isIndexEnhanced = indexEnhancedTypes.includes(strategyType);
+
+  // 指增策略直接使用请求的metric（新字段）
+  if (isIndexEnhanced) return metric;
+
+  // 非指增策略：将新字段映射回旧字段，若无映射则保持原metric
+  return NEW_TO_OLD_METRIC_MAP[metric] || metric;
+}
 
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
     let dataDate = searchParams.get('dataDate');
+    const metric = searchParams.get('metric') || 'weeklyReturn';
 
     // 如果没有指定日期，使用最新日期
     if (!dataDate) {
@@ -22,11 +56,25 @@ export async function GET(request: Request) {
       return NextResponse.json({ strategies: [] });
     }
 
-    // 获取该日期的所有策略类型
-    const strategyTypes = Object.keys(STRATEGY_NAME_MAP);
+    // 获取动态策略类型列表（根据日期切换期货/CTA）
+    const futuresStrategies = getFuturesStrategies(dataDate);
+    const strategyTypes = Object.keys(STRATEGY_NAME_MAP).filter(type => {
+      // 排除旧期货策略（如果使用新CTA）或排除新CTA策略（如果使用旧期货）
+      const isOldFutures = ['subjective-futures', 'quantitative-futures'].includes(type);
+      const isNewCta = ['subjective-cta', 'quantitative-cta', 'composite-cta'].includes(type);
+      
+      if (futuresStrategies.includes(type)) return true;
+      if (isOldFutures && !futuresStrategies.includes('subjective-futures')) return false;
+      if (isNewCta && !futuresStrategies.includes('subjective-cta')) return false;
+      return true;
+    });
+    
     const strategies = [];
 
     for (const strategyType of strategyTypes) {
+      // 根据策略类型和日期确定实际查询的字段
+      const actualMetric = getActualMetric(metric, strategyType, dataDate);
+
       // 查询该策略类型的所有产品
       const products = await prisma.fundProduct.findMany({
         where: {
@@ -34,16 +82,16 @@ export async function GET(request: Request) {
           strategyType,
         },
         select: {
-          weeklyReturn: true,
-        },
+          [actualMetric]: true,
+        } as any,
       });
 
       // 计算五数统计
-      const weeklyReturns = products
-        .map((p: { weeklyReturn: number | null }) => p.weeklyReturn)
-        .filter((v: number | null): v is number => v !== null);
+      const values = products
+        .map((p: any) => p[actualMetric])
+        .filter((v: number | null): v is number => v !== null && !isNaN(v));
 
-      const stats = calculateFiveNumberStats(weeklyReturns);
+      const stats = calculateFiveNumberStats(values);
 
       strategies.push({
         strategyType,

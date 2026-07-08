@@ -9,6 +9,7 @@ export async function GET(
   try {
     const { searchParams } = new URL(request.url);
     let dataDate = searchParams.get('dataDate');
+    const metric = searchParams.get('metric') || 'weeklyReturn';
     const strategyType = params.type;
 
     // 如果没有指定日期，使用最新日期
@@ -33,17 +34,17 @@ export async function GET(
       select: {
         fundManager: true,
         productName: true,
-        weeklyReturn: true,
-      },
+        [metric]: true,
+      } as any,
       orderBy: {
-        weeklyReturn: 'desc',
-      },
+        [metric]: 'desc',
+      } as any,
     });
 
-    const details = products.map((p: { fundManager: string; productName: string; weeklyReturn: number | null }) => ({
+    const details = products.map((p: any) => ({
       fundManager: p.fundManager,
       productName: p.productName,
-      weeklyReturn: p.weeklyReturn,
+      value: p[metric],
     }));
 
     return NextResponse.json({ details });

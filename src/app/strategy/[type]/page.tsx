@@ -3,23 +3,14 @@
 import { useEffect, useState, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useAppStore } from '@/lib/store';
-import { STRATEGY_NAME_MAP, GroupSummary, FundProduct } from '@/lib/types';
-import { formatPercentage } from '@/lib/stats';
-import Sidebar from '@/components/Sidebar';
+import { STRATEGY_NAME_MAP, GroupSummary, FundProduct, getMetricFields, FUTURES_CUTOFF_DATE, OLD_FUTURES_STRATEGIES, NEW_CTA_STRATEGIES } from '@/lib/types';
+import { formatValue } from '@/lib/stats';
 import DateSelector from '@/components/DateSelector';
-import { Menu, Search, ChevronLeft, ChevronRight, ArrowUpDown, BarChart3 } from 'lucide-react';
+import MetricSelector from '@/components/MetricSelector';
+import Navbar from '@/components/Navbar';
+import { Search, ChevronLeft, ChevronRight, ArrowUpDown, Maximize2, Minimize2, X } from 'lucide-react';
 import Link from 'next/link';
-
-const DATA_COLUMNS: { key: keyof FundProduct; label: string }[] = [
-  { key: 'weeklyReturn', label: '近一周收益' },
-  { key: 'monthlyReturn', label: '近一月收益' },
-  { key: 'ytdReturn', label: '今年以来收益' },
-  { key: 'annualizedReturnSinceInception', label: '成立以来年化' },
-  { key: 'ytdMaxDrawdown', label: '今年最大回撤' },
-  { key: 'inceptionMaxDrawdown', label: '成立最大回撤' },
-  { key: 'annualizedVolatility', label: '年化波动率' },
-  { key: 'sharpeRatio', label: '夏普比率' },
-];
+import { useScrollReveal } from '@/hooks/useScrollReveal';
 
 interface StrategyPageProps {
   params: {
@@ -28,20 +19,66 @@ interface StrategyPageProps {
 }
 
 export default function StrategyPage({ params }: StrategyPageProps) {
-  const { dataDate, initialize } = useAppStore();
+  const { dataDate, metric, initialize } = useAppStore();
   const [loading, setLoading] = useState(true);
   const [groupSummary, setGroupSummary] = useState<GroupSummary | null>(null);
   const [products, setProducts] = useState<FundProduct[]>([]);
-  const [sidebarOpen, setSidebarOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [sortBy, setSortBy] = useState<keyof FundProduct>('weeklyReturn');
   const [sortOrder, setSortOrder] = useState<'desc' | 'asc'>('desc');
   const [currentPage, setCurrentPage] = useState(1);
   const [mobileColumn, setMobileColumn] = useState<keyof FundProduct>('weeklyReturn');
+  const [isTableFullscreen, setIsTableFullscreen] = useState(false);
   const pageSize = 20;
 
   const strategyType = params.type;
-  const strategyName = STRATEGY_NAME_MAP[strategyType] || strategyType;
+
+  // 使用动态指标字段
+  const metricFields = getMetricFields(dataDate, strategyType);
+  const currentMetric = metricFields.find(m => m.key === metric) || metricFields[0];
+
+  // 根据日期动态计算实际显示的策略名称
+  const getActualStrategyName = () => {
+    if (!dataDate) return STRATEGY_NAME_MAP[strategyType] || strategyType;
+    
+    const date = new Date(dataDate);
+    const cutoffDate = new Date(FUTURES_CUTOFF_DATE);
+    
+    // 如果访问的是新CTA策略但日期在截止日前，显示旧期货名称
+    if (date < cutoffDate && NEW_CTA_STRATEGIES.includes(strategyType)) {
+      if (strategyType === 'subjective-cta') return STRATEGY_NAME_MAP['subjective-futures'];
+      if (strategyType === 'quantitative-cta') return STRATEGY_NAME_MAP['quantitative-futures'];
+      if (strategyType === 'composite-cta') return '复合CTA（历史无数据）';
+    }
+    // 如果访问的是旧期货策略但日期在截止日后，显示新CTA名称
+    if (date >= cutoffDate && OLD_FUTURES_STRATEGIES.includes(strategyType)) {
+      if (strategyType === 'subjective-futures') return STRATEGY_NAME_MAP['subjective-cta'];
+      if (strategyType === 'quantitative-futures') return STRATEGY_NAME_MAP['quantitative-cta'];
+    }
+    
+    return STRATEGY_NAME_MAP[strategyType] || strategyType;
+  };
+  
+  const strategyName = getActualStrategyName();
+
+  // 当日期或策略类型变化时，重置排序字段为当前指标字段列表的第一个
+  useEffect(() => {
+    const defaultField = metricFields[0]?.key as keyof FundProduct || 'weeklyReturn';
+    setSortBy(defaultField);
+    setMobileColumn(defaultField);
+    setCurrentPage(1);
+  }, [dataDate, strategyType, metricFields]);
+  
+  // 动态数据列（根据日期和策略类型生成）
+  const DATA_COLUMNS: { key: keyof FundProduct; label: string }[] = metricFields.map((field: { key: string; label: string; isPercentage: boolean }) => ({
+    key: field.key as keyof FundProduct,
+    label: field.label,
+  }));
+
+  // Scroll reveal hooks
+  const headerReveal = useScrollReveal();
+  const boxPlotReveal = useScrollReveal();
+  const tableReveal = useScrollReveal();
 
   useEffect(() => {
     initialize();
@@ -51,13 +88,23 @@ export default function StrategyPage({ params }: StrategyPageProps) {
     if (dataDate) {
       fetchData();
     }
-  }, [dataDate, strategyType]);
+  }, [dataDate, strategyType, metric]);
+
+  // Force reveal after data loads (same as homepage fix)
+  useEffect(() => {
+    if (!loading && groupSummary) {
+      requestAnimationFrame(() => {
+        boxPlotReveal.forceReveal();
+        tableReveal.forceReveal();
+      });
+    }
+  }, [loading, groupSummary]);
 
   const fetchData = async () => {
     setLoading(true);
     try {
       const [summaryRes, productsRes] = await Promise.all([
-        fetch(`/api/strategies/${strategyType}/group-summary?dataDate=${dataDate}`),
+        fetch(`/api/strategies/${strategyType}/group-summary?dataDate=${dataDate}&metric=${metric}`),
         fetch(`/api/strategies/${strategyType}/products?dataDate=${dataDate}&page=1&limit=1000`),
       ]);
       const summaryData = await summaryRes.json();
@@ -98,244 +145,283 @@ export default function StrategyPage({ params }: StrategyPageProps) {
   );
 
   return (
-    <div className="min-h-screen bg-dark-bg overflow-x-hidden">
-      {/* Header */}
-      <header className="bg-dark-card/80 backdrop-blur-md border-b border-dark-border sticky top-0 z-30">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between px-4 sm:px-6 py-2 sm:py-3 gap-2 sm:gap-0">
-          <div className="flex items-center gap-3">
-            <button
-              onClick={() => setSidebarOpen(!sidebarOpen)}
-              className="md:hidden p-2 rounded-lg hover:bg-dark-cardHover transition-colors text-dark-textMuted"
-            >
-              <Menu className="w-5 h-5" />
-            </button>
-            <div className="flex items-center gap-2">
-              <Link
-                href="/"
-                className="p-1.5 rounded-lg hover:bg-dark-cardHover transition-colors text-dark-textDim hover:text-dark-text shrink-0"
-              >
-                <ChevronLeft className="w-4 h-4" />
-              </Link>
-              <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-gradient-to-br from-cyan-500 to-blue-600 flex items-center justify-center shrink-0">
-                <BarChart3 className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-white" />
-              </div>
-              <div className="min-w-0">
-                <h1 className="text-sm sm:text-base font-bold text-dark-text tracking-wide truncate">
-                  {strategyName}
-                </h1>
-                <p className="text-xs text-dark-textDim hidden sm:block">策略详情</p>
-              </div>
-            </div>
+    <div className="min-h-screen bg-[#F5F5F7]">
+      <Navbar />
+      <div className="h-14" />
+
+      <main className="max-w-[1200px] mx-auto px-6 lg:px-8 py-12">
+        {/* Breadcrumb & Title */}
+        <div ref={headerReveal.ref} className={`mb-10 scroll-reveal ${headerReveal.revealed ? 'revealed' : ''}`}>
+          <div className="flex items-center gap-2 text-[13px] text-[#86868B] mb-4">
+            <Link href="/" className="hover:text-[#0071E3] transition-colors">
+              概况
+            </Link>
+            <ChevronLeft className="w-3 h-3 rotate-180" />
+            <span className="text-[#1D1D1F] font-medium">{strategyName}</span>
           </div>
-          <div className="flex-1 sm:flex-none sm:w-48">
+          <h1 className="section-title text-[#1D1D1F] mb-2">{strategyName}</h1>
+          <p className="text-[17px] text-[#86868B]">{filteredProducts.length} 只产品 · {currentMetric.label}</p>
+        </div>
+
+        {/* Controls Bar - moved above box plots */}
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6">
+          <h2 className="text-[20px] font-semibold text-[#1D1D1F] tracking-tight">规模分布对比</h2>
+          <div className="flex items-center gap-3 flex-wrap">
+            <MetricSelector strategyType={strategyType} />
             <DateSelector />
           </div>
         </div>
-      </header>
 
-      <div className="flex">
-        <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
+        {loading ? (
+          <div className="flex items-center justify-center py-32">
+            <div className="flex flex-col items-center gap-3">
+              <div className="w-8 h-8 border-2 border-[#0071E3]/30 border-t-[#0071E3] rounded-full animate-spin" />
+              <p className="text-[15px] text-[#86868B]">加载数据中...</p>
+            </div>
+          </div>
+        ) : (
+          <>
+            {/* Group Box Plots */}
+            {groupSummary && (
+              <div ref={boxPlotReveal.ref} className={`grid grid-cols-1 md:grid-cols-2 gap-4 mb-10 scroll-reveal ${boxPlotReveal.revealed ? 'revealed' : ''}`}>
+                <BoxPlotCard
+                  title="100亿元以上"
+                  stats={groupSummary.largeScale}
+                  metricName={currentMetric.label}
+                  isPercentage={currentMetric.isPercentage}
+                />
+                <BoxPlotCard
+                  title="100亿以下"
+                  stats={groupSummary.smallScale}
+                  metricName={currentMetric.label}
+                  isPercentage={currentMetric.isPercentage}
+                />
+              </div>
+            )}
 
-        <main className="flex-1 p-4 sm:p-6 md:ml-64 overflow-x-hidden">
-          <div className="max-w-7xl mx-auto">
-            {loading ? (
-              <div className="flex items-center justify-center py-32">
-                <div className="flex flex-col items-center gap-3">
-                  <div className="w-8 h-8 border-2 border-cyan-400/30 border-t-cyan-400 rounded-full animate-spin" />
-                  <p className="text-sm text-dark-textDim">加载数据中...</p>
+            {/* Products Table */}
+            <div ref={tableReveal.ref} className={`scroll-reveal ${tableReveal.revealed ? 'revealed' : ''}`}>
+              {/* Controls Bar */}
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6 pb-6 border-b border-[#0000000D]">
+                <h2 className="text-[24px] font-semibold text-[#1D1D1F] tracking-tight">产品明细</h2>
+                <div className="flex items-center gap-3 flex-wrap">
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#86868B] pointer-events-none" />
+                    <input
+                      type="text"
+                      placeholder="搜索基金管理人..."
+                      value={searchTerm}
+                      onChange={(e) => {
+                        setSearchTerm(e.target.value);
+                        setCurrentPage(1);
+                      }}
+                      className="pl-9 pr-4 py-2 bg-[#FFFFFF] border border-[#0000000D] rounded-full text-[14px] text-[#1D1D1F] placeholder-[#A1A1A6] focus:outline-none focus:ring-2 focus:ring-[#0071E3]/30 transition-all w-56 hover:border-[#0000001A]"
+                    />
+                  </div>
+                  <button
+                    onClick={() => setIsTableFullscreen(true)}
+                    className="p-2 rounded-xl bg-[#FFFFFF] border border-[#0000000D] hover:bg-[#00000006] transition-all duration-200 group"
+                    title="全屏查看"
+                  >
+                    <Maximize2 className="w-4 h-4 text-[#86868B] group-hover:text-[#1D1D1F] transition-colors" />
+                  </button>
                 </div>
               </div>
-            ) : (
-              <>
-                {/* Strategy Title */}
-                <div className="mb-6">
-                  <div className="flex items-center gap-3">
-                    <div className="w-1.5 h-8 rounded-full bg-gradient-to-b from-cyan-400 to-blue-500" />
-                    <div>
-                      <h1 className="text-xl font-bold text-dark-text tracking-wide">{strategyName}</h1>
-                      <p className="text-xs text-dark-textDim mt-0.5">策略详情 · {filteredProducts.length} 只产品</p>
-                    </div>
-                  </div>
+            <div className="glass-card rounded-3xl overflow-hidden shadow-apple">
+              {/* Mobile Column Selector */}
+              <div className="sm:hidden border-b border-[#0000000D] px-4 py-3">
+                <div className="flex flex-wrap gap-2">
+                  {DATA_COLUMNS.map((col) => (
+                    <button
+                      key={col.key}
+                      onClick={() => {
+                        setMobileColumn(col.key);
+                        handleSort(col.key);
+                      }}
+                      className={`px-3 py-1.5 rounded-full text-[13px] whitespace-nowrap transition-all duration-300 ease-apple ${
+                        mobileColumn === col.key
+                          ? 'bg-[#0071E3] text-white font-medium'
+                          : 'bg-[#00000006] text-[#86868B] hover:text-[#1D1D1F] hover:bg-[#0000000A]'
+                      }`}
+                    >
+                      {col.label}
+                    </button>
+                  ))}
                 </div>
+              </div>
 
-                {/* Group Box Plots */}
-                {groupSummary && (
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
-                    <BoxPlotCard
-                      title="100亿元以上"
-                      stats={groupSummary.largeScale}
-                    />
-                    <BoxPlotCard
-                      title="100亿以下"
-                      stats={groupSummary.smallScale}
-                    />
-                  </div>
-                )}
-
-                {/* Products Table */}
-                <div className="bg-dark-card border border-dark-border rounded-xl overflow-hidden">
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 px-5 py-4 border-b border-dark-border">
-                    <div className="flex items-center gap-3">
-                      <div className="w-1.5 h-5 rounded-full bg-cyan-400" />
-                      <h3 className="text-sm font-semibold text-dark-text">
-                        产品数据明细表
-                      </h3>
-                      <span className="text-xs text-dark-textDim font-mono bg-dark-bg px-2 py-0.5 rounded">
-                        {filteredProducts.length} 条
-                      </span>
-                    </div>
-                    <div className="relative">
-                      <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-dark-textDim pointer-events-none" />
-                      <input
-                        type="text"
-                        placeholder="搜索基金管理人..."
-                        value={searchTerm}
-                        onChange={(e) => {
-                          setSearchTerm(e.target.value);
-                          setCurrentPage(1);
-                        }}
-                        className="pl-8 pr-3 py-1.5 bg-dark-bg border border-dark-border rounded-lg text-sm text-dark-text placeholder-dark-textDim focus:outline-none focus:ring-2 focus:ring-cyan-400/30 focus:border-cyan-400/50 transition-all w-56"
-                      />
-                    </div>
-                  </div>
-
-                  {/* Mobile Column Selector */}
-                  <div className="sm:hidden border-b border-dark-border bg-dark-bg/30">
-                    <div className="flex flex-wrap gap-1.5 px-3 py-2.5">
+              {/* Desktop Table */}
+              <div className="hidden sm:block overflow-x-auto">
+                <table className="w-full">
+                  <thead className="bg-[#00000004]">
+                    <tr>
+                      <th className="px-5 py-3 text-left text-[13px] font-medium text-[#86868B] whitespace-nowrap">基金管理人</th>
+                      <th className="px-5 py-3 text-left text-[13px] font-medium text-[#86868B] whitespace-nowrap">管理人规模</th>
+                      <th className="px-5 py-3 text-left text-[13px] font-medium text-[#86868B] whitespace-nowrap sticky left-0 z-10 bg-[#FAFAFB]">产品名称</th>
+                      <th className="px-5 py-3 text-left text-[13px] font-medium text-[#86868B] whitespace-nowrap">策略分类</th>
                       {DATA_COLUMNS.map((col) => (
-                        <button
-                          key={col.key}
-                          onClick={() => {
-                            setMobileColumn(col.key);
-                            handleSort(col.key);
-                          }}
-                          className={`px-3 py-1 rounded-full text-xs whitespace-nowrap transition-all duration-200 ${
-                            mobileColumn === col.key
-                              ? 'bg-cyan-400/15 text-cyan-300 border border-cyan-400/40 font-medium'
-                              : 'text-dark-textDim border border-dark-border hover:border-cyan-400/30 hover:text-dark-text'
-                          }`}
-                        >
+                        <SortableHeader key={col.key} field={col.key} currentSort={sortBy} onSort={handleSort}>
                           {col.label}
-                        </button>
+                        </SortableHeader>
                       ))}
-                    </div>
-                  </div>
-
-                  {/* Desktop Table */}
-                  <div className="hidden sm:block">
-                    <table className="w-full text-xs table-fixed">
-                      <colgroup>
-                        <col className="w-[110px]" />
-                        <col className="w-[90px]" />
-                        <col className="w-[180px]" />
-                        <col className="w-[90px]" />
-                        <col className="w-[88px]" />
-                        <col className="w-[88px]" />
-                        <col className="w-[98px]" />
-                        <col className="w-[98px]" />
-                        <col className="w-[98px]" />
-                        <col className="w-[98px]" />
-                        <col className="w-[88px]" />
-                        <col className="w-[78px]" />
-                      </colgroup>
-                      <thead className="bg-dark-bg/50 border-b border-dark-border">
-                        <tr>
-                          <th className="px-3 py-3 text-left font-medium text-dark-textDim whitespace-nowrap">基金管理人</th>
-                          <th className="px-3 py-3 text-left font-medium text-dark-textDim whitespace-nowrap">管理人规模</th>
-                          <th className="px-3 py-3 text-left font-medium text-dark-textDim whitespace-nowrap">产品名称</th>
-                          <th className="px-3 py-3 text-left font-medium text-dark-textDim whitespace-nowrap">策略分类</th>
-                          <SortableHeader field="weeklyReturn" currentSort={sortBy} onSort={handleSort}>近一周收益</SortableHeader>
-                          <SortableHeader field="monthlyReturn" currentSort={sortBy} onSort={handleSort}>近一月收益</SortableHeader>
-                          <SortableHeader field="ytdReturn" currentSort={sortBy} onSort={handleSort}>今年以来收益</SortableHeader>
-                          <SortableHeader field="annualizedReturnSinceInception" currentSort={sortBy} onSort={handleSort}>成立以来年化</SortableHeader>
-                          <SortableHeader field="ytdMaxDrawdown" currentSort={sortBy} onSort={handleSort}>今年最大回撤</SortableHeader>
-                          <SortableHeader field="inceptionMaxDrawdown" currentSort={sortBy} onSort={handleSort}>成立最大回撤</SortableHeader>
-                          <SortableHeader field="annualizedVolatility" currentSort={sortBy} onSort={handleSort}>年化波动率</SortableHeader>
-                          <SortableHeader field="sharpeRatio" currentSort={sortBy} onSort={handleSort}>夏普比率</SortableHeader>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {paginatedProducts.map((product, index) => (
-                          <tr
-                            key={product.id}
-                            className="border-b border-dark-border/50 hover:bg-cyan-400/5 transition-all duration-200 animate-slide-in"
-                            style={{ animationDelay: `${Math.min(index * 30, 600)}ms`, animationFillMode: 'both' }}
-                          >
-                            <td className="px-3 py-2.5 text-dark-text whitespace-nowrap">{product.fundManager}</td>
-                            <td className="px-3 py-2.5 text-dark-textMuted whitespace-nowrap">{product.managerScale}</td>
-                            <td className="px-3 py-2.5 text-dark-text font-medium whitespace-nowrap">{product.productName}</td>
-                            <td className="px-3 py-2.5 text-dark-textMuted whitespace-nowrap">{product.strategyCategory || '-'}</td>
-                            <td className="px-3 py-2.5 text-right whitespace-nowrap">{renderCell(product.weeklyReturn)}</td>
-                            <td className="px-3 py-2.5 text-right whitespace-nowrap">{renderCell(product.monthlyReturn)}</td>
-                            <td className="px-3 py-2.5 text-right whitespace-nowrap">{renderCell(product.ytdReturn)}</td>
-                            <td className="px-3 py-2.5 text-right whitespace-nowrap">{renderCell(product.annualizedReturnSinceInception)}</td>
-                            <td className="px-3 py-2.5 text-right whitespace-nowrap">{renderCell(product.ytdMaxDrawdown)}</td>
-                            <td className="px-3 py-2.5 text-right whitespace-nowrap">{renderCell(product.inceptionMaxDrawdown)}</td>
-                            <td className="px-3 py-2.5 text-right whitespace-nowrap">{renderCell(product.annualizedVolatility)}</td>
-                            <td className="px-3 py-2.5 text-right whitespace-nowrap">{product.sharpeRatio?.toFixed(2) ?? '-'}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-
-                  {/* Mobile List */}
-                  <div className="sm:hidden">
-                    <div className="flex items-center justify-between px-3 py-2.5 border-b border-dark-border bg-dark-bg/50 text-xs">
-                      <span className="font-medium text-dark-textDim">产品名称</span>
-                      <span className="font-medium text-dark-textDim cursor-pointer select-none flex items-center gap-1" onClick={() => handleSort(mobileColumn)}>
-                        {DATA_COLUMNS.find(c => c.key === mobileColumn)?.label}
-                        {sortBy === mobileColumn && <ArrowUpDown className="w-3 h-3" />}
-                      </span>
-                    </div>
-                    {paginatedProducts.map((product, index) => (
-                      <div
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {paginatedProducts.map((product) => (
+                      <tr
                         key={product.id}
-                        className="flex items-center justify-between px-3 py-3 border-b border-dark-border/50 hover:bg-cyan-400/5 transition-all duration-200 animate-slide-in"
-                        style={{ animationDelay: `${Math.min(index * 30, 600)}ms`, animationFillMode: 'both' }}
+                        className="border-b border-[#00000008] hover:bg-[#0071E3]/[0.02] transition-all duration-200"
                       >
-                        <div className="flex-1 min-w-0 pr-3 text-dark-text font-medium text-xs break-words">{product.productName}</div>
-                        <div className="shrink-0 text-right">{renderMobileCell(product, mobileColumn)}</div>
-                      </div>
+                        <td className="px-5 py-3 text-[14px] text-[#1D1D1F] whitespace-nowrap">{product.fundManager}</td>
+                        <td className="px-5 py-3 text-[14px] text-[#86868B] whitespace-nowrap">{product.managerScale}</td>
+                        <td className="px-5 py-3 text-[14px] text-[#1D1D1F] font-medium whitespace-nowrap sticky left-0 z-10 bg-white">{product.productName}</td>
+                        <td className="px-5 py-3 text-[14px] text-[#86868B] whitespace-nowrap">{product.strategyCategory || '-'}</td>
+                        {DATA_COLUMNS.map((col) => (
+                          <td key={col.key} className="px-5 py-3 text-right whitespace-nowrap">
+                            {renderCell(product[col.key] as number, col.key !== 'sharpeRatio' && col.key !== 'excessSharpeRatio' && col.key !== 'karmaRatio')}
+                          </td>
+                        ))}
+                      </tr>
                     ))}
-                    {filteredProducts.length === 0 && (
-                      <div className="text-center py-12 text-dark-textDim text-sm">暂无数据</div>
-                    )}
-                  </div>
+                  </tbody>
+                </table>
+              </div>
 
-                  {/* Pagination */}
-                  {totalPages > 1 && (
-                    <div className="flex justify-between items-center px-5 py-3 border-t border-dark-border">
-                      <span className="text-xs text-dark-textDim">
-                        共 {filteredProducts.length} 条数据
-                      </span>
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
-                          disabled={currentPage === 1}
-                          className="p-1.5 rounded-lg border border-dark-border hover:bg-dark-cardHover disabled:opacity-40 disabled:cursor-not-allowed transition-colors text-dark-textMuted"
-                        >
-                          <ChevronLeft className="w-3.5 h-3.5" />
-                        </button>
-                        <span className="text-xs text-dark-textMuted px-2 font-mono">
-                          {currentPage} / {totalPages}
-                        </span>
-                        <button
-                          onClick={() => setCurrentPage(Math.min(totalPages, currentPage + 1))}
-                          disabled={currentPage === totalPages}
-                          className="p-1.5 rounded-lg border border-dark-border hover:bg-dark-cardHover disabled:opacity-40 disabled:cursor-not-allowed transition-colors text-dark-textMuted"
-                        >
-                          <ChevronRight className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    </div>
-                  )}
+              {/* Mobile List */}
+              <div className="sm:hidden">
+                <div className="flex items-center justify-between px-4 py-3 border-b border-[#0000000D] text-[13px]">
+                  <span className="font-medium text-[#86868B]">产品名称</span>
+                  <span className="font-medium text-[#86868B] cursor-pointer select-none flex items-center gap-1.5" onClick={() => handleSort(mobileColumn)}>
+                    {DATA_COLUMNS.find(c => c.key === mobileColumn)?.label}
+                    {sortBy === mobileColumn && <ArrowUpDown className="w-3.5 h-3.5" />}
+                  </span>
                 </div>
-              </>
-            )}
+                {paginatedProducts.map((product) => (
+                  <div
+                    key={product.id}
+                    className="flex items-center justify-between px-4 py-3.5 border-b border-[#00000008]"
+                  >
+                    <div className="flex-1 min-w-0 pr-3">
+                      <div className="text-[14px] text-[#1D1D1F] font-medium truncate">{product.productName}</div>
+                      <div className="text-[12px] text-[#86868B] mt-0.5">{product.fundManager} · {product.managerScale}</div>
+                    </div>
+                    <div className="shrink-0 text-right">
+                      {renderMobileCell(product, mobileColumn)}
+                    </div>
+                  </div>
+                ))}
+                {filteredProducts.length === 0 && (
+                  <div className="text-center py-12 text-[#86868B] text-[15px]">暂无数据</div>
+                )}
+              </div>
+
+              {/* Pagination */}
+              {totalPages > 1 && (
+                <div className="flex justify-between items-center px-5 py-4 border-t border-[#0000000D]">
+                  <span className="text-[13px] text-[#86868B]">
+                    共 {filteredProducts.length} 条数据
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
+                      disabled={currentPage === 1}
+                      className="p-2 rounded-xl border border-[#0000000D] hover:bg-[#00000008] disabled:opacity-40 disabled:cursor-not-allowed transition-all duration-300 text-[#86868B]"
+                    >
+                      <ChevronLeft className="w-4 h-4" />
+                    </button>
+                    <span className="text-[13px] text-[#86868B] px-3 font-medium">
+                      {currentPage} / {totalPages}
+                    </span>
+                    <button
+                      onClick={() => setCurrentPage(Math.min(totalPages, currentPage + 1))}
+                      disabled={currentPage === totalPages}
+                      className="p-2 rounded-xl border border-[#0000000D] hover:bg-[#00000008] disabled:opacity-40 disabled:cursor-not-allowed transition-all duration-300 text-[#86868B]"
+                    >
+                      <ChevronRight className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+            </div>
+          </>
+        )}
+      </main>
+
+      {/* Fullscreen Table Modal */}
+      {isTableFullscreen && createPortal(
+        <div className="fixed inset-0 z-[100] bg-[#F5F5F7] overflow-auto">
+          <div className="sticky top-0 z-10 glass-card border-b border-[#0000000D] backdrop-blur-xl bg-[#F5F5F7]/90">
+            <div className="max-w-[1400px] mx-auto px-6 lg:px-8 py-4 flex items-center justify-between">
+              <div>
+                <h2 className="text-[20px] font-semibold text-[#1D1D1F] tracking-tight">{strategyName} - 产品明细</h2>
+                <p className="text-[13px] text-[#86868B] mt-1">{filteredProducts.length} 只产品 · {currentMetric.label}</p>
+              </div>
+              <div className="flex items-center gap-3">
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#86868B] pointer-events-none" />
+                  <input
+                    type="text"
+                    placeholder="搜索基金管理人..."
+                    value={searchTerm}
+                    onChange={(e) => {
+                      setSearchTerm(e.target.value);
+                      setCurrentPage(1);
+                    }}
+                    className="pl-9 pr-4 py-2 bg-[#FFFFFF] border border-[#0000000D] rounded-full text-[14px] text-[#1D1D1F] placeholder-[#A1A1A6] focus:outline-none focus:ring-2 focus:ring-[#0071E3]/30 transition-all w-56 hover:border-[#0000001A]"
+                  />
+                </div>
+                <button
+                  onClick={() => setIsTableFullscreen(false)}
+                  className="p-2 rounded-xl bg-[#FFFFFF] border border-[#0000000D] hover:bg-[#00000006] transition-all duration-200 group"
+                  title="退出全屏"
+                >
+                  <Minimize2 className="w-4 h-4 text-[#86868B] group-hover:text-[#1D1D1F] transition-colors" />
+                </button>
+              </div>
+            </div>
           </div>
-        </main>
-      </div>
+
+          <div className="max-w-[1800px] mx-auto px-4 lg:px-6 py-6">
+            <div className="glass-card rounded-3xl overflow-hidden shadow-apple">
+              <div className="overflow-x-auto" style={{ minWidth: '1400px' }}>
+                <table className="w-full">
+                  <thead className="bg-[#00000004]">
+                    <tr>
+                      <th className="px-5 py-3 text-left text-[13px] font-medium text-[#86868B] whitespace-nowrap">基金管理人</th>
+                      <th className="px-5 py-3 text-left text-[13px] font-medium text-[#86868B] whitespace-nowrap">管理人规模</th>
+                      <th className="px-5 py-3 text-left text-[13px] font-medium text-[#86868B] whitespace-nowrap sticky left-0 z-10 bg-[#FAFAFB]">产品名称</th>
+                      <th className="px-5 py-3 text-left text-[13px] font-medium text-[#86868B] whitespace-nowrap">策略分类</th>
+                      {DATA_COLUMNS.map((col) => (
+                        <th key={col.key} className="px-5 py-3 text-right text-[13px] font-medium text-[#86868B] whitespace-nowrap">{col.label}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredProducts.map((product) => (
+                      <tr
+                        key={product.id}
+                        className="border-b border-[#00000008] hover:bg-[#0071E3]/[0.02] transition-all duration-200"
+                      >
+                        <td className="px-5 py-3 text-[14px] text-[#1D1D1F] whitespace-nowrap">{product.fundManager}</td>
+                        <td className="px-5 py-3 text-[14px] text-[#86868B] whitespace-nowrap">{product.managerScale}</td>
+                        <td className="px-5 py-3 text-[14px] text-[#1D1D1F] font-medium whitespace-nowrap sticky left-0 z-10 bg-white">{product.productName}</td>
+                        <td className="px-5 py-3 text-[14px] text-[#86868B] whitespace-nowrap">{product.strategyCategory || '-'}</td>
+                        {DATA_COLUMNS.map((col) => (
+                          <td key={col.key} className="px-5 py-3 text-right whitespace-nowrap">
+                            {renderCell(product[col.key] as number, col.key !== 'sharpeRatio' && col.key !== 'annualizedVolatility')}
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
     </div>
   );
 }
@@ -353,48 +439,54 @@ function SortableHeader({
 }) {
   return (
     <th
-      className="px-3 py-3 text-right font-medium text-dark-textDim whitespace-nowrap cursor-pointer hover:text-cyan-400 transition-colors select-none hidden sm:table-cell"
+      className="px-5 py-3 text-right text-[13px] font-medium text-[#86868B] whitespace-nowrap cursor-pointer hover:text-[#0071E3] transition-colors select-none"
       onClick={() => onSort(field as any)}
     >
-      <span className="flex items-center justify-end gap-1">
+      <span className="flex items-center justify-end gap-1.5">
         {children}
-        {currentSort === field && <ArrowUpDown className="w-3 h-3" />}
+        {currentSort === field && <ArrowUpDown className="w-3.5 h-3.5" />}
       </span>
     </th>
   );
 }
 
-function renderCell(value: number | null): React.ReactNode {
-  if (value === null) return <span className="text-dark-textDim">-</span>;
-  const isPositive = value >= 0;
+function renderCell(value: any, isPct: boolean = true): React.ReactNode {
+  if (value === null || value === undefined) return <span className="text-[#A1A1A6]">-</span>;
+  const numValue = Number(value);
+  if (isNaN(numValue)) return <span className="text-[#A1A1A6]">-</span>;
+  const isPositive = numValue >= 0;
   return (
-    <span className={`font-mono font-medium ${isPositive ? 'text-red-400' : 'text-green-400'}`}>
-      {formatPercentage(value)}
+    <span className={`text-[14px] font-semibold ${isPositive ? 'text-[#DC2626]' : 'text-[#16A34A]'}`}>
+      {formatValue(numValue, isPct)}
     </span>
   );
 }
 
 function renderMobileCell(product: FundProduct, field: keyof FundProduct): React.ReactNode {
   const value = product[field];
-  if (field === 'sharpeRatio') {
-    return <span className="font-mono font-medium text-dark-text">{typeof value === 'number' ? value.toFixed(2) : '-'}</span>;
-  }
+  const nonPctFields = ['sharpeRatio', 'excessSharpeRatio', 'karmaRatio'];
+  const isPct = !nonPctFields.includes(field as string);
   if (typeof value === 'number') {
-    return renderCell(value);
+    return renderCell(value, isPct);
   }
-  return <span className="text-dark-textDim">-</span>;
+  return <span className="text-[#A1A1A6]">-</span>;
 }
 
 // Box Plot Card for group summary
-function BoxPlotCard({ title, stats }: { title: string; stats: any }) {
+function BoxPlotCard({ title, stats, metricName, isPercentage = true }: { title: string; stats: any; metricName?: string; isPercentage?: boolean }) {
   const svgRef = useRef<SVGSVGElement>(null);
   const [tooltip, setTooltip] = useState<{ clientX: number; clientY: number; visible: boolean }>({ clientX: 0, clientY: 0, visible: false });
+  const [isTouchDevice, setIsTouchDevice] = useState(false);
 
-  if (stats.count === 0) {
+  useEffect(() => {
+    setIsTouchDevice('ontouchstart' in window || navigator.maxTouchPoints > 0);
+  }, []);
+
+  if (!stats || stats.count === 0) {
     return (
-      <div className="bg-dark-card border border-dark-border rounded-xl p-5">
-        <h3 className="text-sm font-semibold text-dark-text mb-4">{title}</h3>
-        <div className="text-center py-8 text-dark-textDim text-sm">暂无数据</div>
+      <div className="glass-card rounded-3xl p-6">
+        <h3 className="text-[17px] font-semibold text-[#1D1D1F] mb-4">{title}</h3>
+        <div className="text-center py-8 text-[#86868B] text-[15px]">暂无数据</div>
       </div>
     );
   }
@@ -423,6 +515,7 @@ function BoxPlotCard({ title, stats }: { title: string; stats: any }) {
   const xMax = mapX(dataMax);
 
   const handleMouseMove = (e: React.MouseEvent<SVGSVGElement>) => {
+    if (isTouchDevice) return;
     setTooltip({
       clientX: e.clientX,
       clientY: e.clientY,
@@ -431,17 +524,46 @@ function BoxPlotCard({ title, stats }: { title: string; stats: any }) {
   };
 
   const handleMouseLeave = () => {
+    if (isTouchDevice) return;
     setTooltip({ clientX: 0, clientY: 0, visible: false });
   };
 
+  // Touch events for mobile - show on touch, hide on release
+  const handleTouchStart = (e: React.TouchEvent<SVGSVGElement>) => {
+    if (!isTouchDevice) return;
+    e.stopPropagation();
+    const touch = e.touches[0];
+    setTooltip({
+      clientX: touch.clientX,
+      clientY: touch.clientY,
+      visible: true,
+    });
+  };
+
+  const handleTouchEnd = (e: React.TouchEvent<SVGSVGElement>) => {
+    if (!isTouchDevice) return;
+    e.stopPropagation();
+    setTooltip({ clientX: 0, clientY: 0, visible: false });
+  };
+
+  const handleTouchMove = (e: React.TouchEvent<SVGSVGElement>) => {
+    if (!isTouchDevice) return;
+    const touch = e.touches[0];
+    setTooltip({
+      clientX: touch.clientX,
+      clientY: touch.clientY,
+      visible: true,
+    });
+  };
+
   return (
-    <div className="bg-dark-card border border-dark-border rounded-xl p-5 hover:border-cyan-400/40 transition-all duration-300 card-hover">
+    <div className="glass-card rounded-3xl p-6 glass-card-hover relative">
       <div className="flex items-center justify-between mb-4">
-        <h3 className="text-sm font-semibold text-dark-text flex items-center gap-2">
-          <div className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse" />
+        <h3 className="text-[17px] font-semibold text-[#1D1D1F] flex items-center gap-2.5">
+          <div className="w-2 h-2 rounded-full bg-[#0071E3]" />
           {title}
         </h3>
-        <span className="text-xs text-dark-textDim font-mono bg-dark-bg/50 px-2 py-0.5 rounded">{stats.count} 只</span>
+        <span className="text-[13px] text-[#86868B] font-medium px-2.5 py-0.5 rounded-full bg-[#00000006]">{stats.count} 只</span>
       </div>
       <div className="relative">
         <svg
@@ -452,12 +574,15 @@ function BoxPlotCard({ title, stats }: { title: string; stats: any }) {
           className="overflow-hidden"
           onMouseMove={handleMouseMove}
           onMouseLeave={handleMouseLeave}
+          onTouchStart={handleTouchStart}
+          onTouchEnd={handleTouchEnd}
+          onTouchMove={handleTouchMove}
         >
           <defs>
-            <linearGradient id="boxGradient-${title}" x1="0%" y1="0%" x2="100%" y2="0%">
-              <stop offset="0%" stopColor="#22d3ee" stopOpacity="0.6" />
-              <stop offset="50%" stopColor="#22d3ee" stopOpacity="1" />
-              <stop offset="100%" stopColor="#22d3ee" stopOpacity="0.6" />
+            <linearGradient id="appleBoxGradient-${title}" x1="0%" y1="0%" x2="100%" y2="0%">
+              <stop offset="0%" stopColor="#0071E3" stopOpacity="0.3" />
+              <stop offset="50%" stopColor="#0071E3" stopOpacity="0.6" />
+              <stop offset="100%" stopColor="#0071E3" stopOpacity="0.3" />
             </linearGradient>
           </defs>
           <line
@@ -465,20 +590,20 @@ function BoxPlotCard({ title, stats }: { title: string; stats: any }) {
             y1={yCenter}
             x2={chartWidth - padding}
             y2={yCenter}
-            stroke="#2A3447"
+            stroke="#00000010"
             strokeWidth="1"
-            strokeDasharray="4 4"
+            strokeDasharray="3 3"
           />
           {xMin !== null && xQ25 !== null && (
             <>
-              <line x1={xMin} y1={yCenter} x2={xQ25} y2={yCenter} stroke="#64748B" strokeWidth="1.5" />
-              <line x1={xMin} y1={yCenter - whiskerHeight / 2} x2={xMin} y2={yCenter + whiskerHeight / 2} stroke="#64748B" strokeWidth="1.5" strokeLinecap="round" />
+              <line x1={xMin} y1={yCenter} x2={xQ25} y2={yCenter} stroke="#1D1D1F" strokeWidth="2" opacity="0.3" />
+              <line x1={xMin} y1={yCenter - whiskerHeight / 2} x2={xMin} y2={yCenter + whiskerHeight / 2} stroke="#1D1D1F" strokeWidth="2" strokeLinecap="round" opacity="0.4" />
             </>
           )}
           {xMax !== null && xQ75 !== null && (
             <>
-              <line x1={xQ75} y1={yCenter} x2={xMax} y2={yCenter} stroke="#64748B" strokeWidth="1.5" />
-              <line x1={xMax} y1={yCenter - whiskerHeight / 2} x2={xMax} y2={yCenter + whiskerHeight / 2} stroke="#64748B" strokeWidth="1.5" strokeLinecap="round" />
+              <line x1={xQ75} y1={yCenter} x2={xMax} y2={yCenter} stroke="#1D1D1F" strokeWidth="2" opacity="0.3" />
+              <line x1={xMax} y1={yCenter - whiskerHeight / 2} x2={xMax} y2={yCenter + whiskerHeight / 2} stroke="#1D1D1F" strokeWidth="2" strokeLinecap="round" opacity="0.4" />
             </>
           )}
           {xQ25 !== null && xQ75 !== null && (
@@ -487,45 +612,32 @@ function BoxPlotCard({ title, stats }: { title: string; stats: any }) {
               y={yCenter - boxHeight / 2}
               width={Math.max(xQ75 - xQ25, 2)}
               height={boxHeight}
-              fill="rgba(34, 211, 238, 0.15)"
-              stroke={`url(#boxGradient-${title})`}
+              fill="url(#appleBoxGradient-${title})"
+              rx="4"
+              stroke="#0071E3"
               strokeWidth="1.5"
-              rx="2"
-            />
-          )}
-          {xQ25 !== null && xQ75 !== null && (
-            <line
-              x1={(xQ25 + xQ75) / 2}
-              y1={yCenter - boxHeight / 2}
-              x2={(xQ25 + xQ75) / 2}
-              y2={yCenter + boxHeight / 2}
-              stroke="#22d3ee"
-              strokeWidth="2"
             />
           )}
           {xMean !== null && (
-            <circle cx={xMean} cy={yCenter} r="5" fill="#f87171" stroke="#0B0F19" strokeWidth="2" />
+            <circle cx={xMean} cy={yCenter} r="4" fill="#FFFFFF" stroke="#0071E3" strokeWidth="2" />
           )}
         </svg>
         
-        {/* Tooltip - rendered via portal to avoid container clipping */}
+        {/* Tooltip via portal */}
         {tooltip.visible && createPortal(
           <BoxPlotTooltip
             title={title}
             stats={stats}
+            metricName={metricName}
             clientX={tooltip.clientX}
             clientY={tooltip.clientY}
+            isPercentage={isPercentage}
           />,
           document.body
         )}
       </div>
-      <div className="mt-3 flex items-center gap-3 text-[10px] text-dark-textDim">
-        <span className="flex items-center gap-1">
-          <span className="w-1.5 h-1.5 rounded-full bg-cyan-400/60" />中位数
-        </span>
-        <span className="flex items-center gap-1">
-          <span className="w-1.5 h-1.5 rounded-full bg-red-400" />均值
-        </span>
+      <div className="mt-4 flex items-center justify-end text-[12px] text-[#86868B]">
+        <span className="text-[13px] text-[#86868B] font-medium px-2.5 py-0.5 rounded-full bg-[#00000006]">{stats.count} 只</span>
       </div>
     </div>
   );
@@ -534,13 +646,17 @@ function BoxPlotCard({ title, stats }: { title: string; stats: any }) {
 function BoxPlotTooltip({
   title,
   stats,
+  metricName,
   clientX,
   clientY,
+  isPercentage = true,
 }: {
   title: string;
   stats: any;
+  metricName?: string;
   clientX: number;
   clientY: number;
+  isPercentage?: boolean;
 }) {
   const tooltipWidth = 160;
   const tooltipHeight = 145;
@@ -548,7 +664,6 @@ function BoxPlotTooltip({
   let left = clientX + 14;
   let top = clientY - tooltipHeight / 2;
 
-  // Prevent overflow beyond viewport
   if (left + tooltipWidth > window.innerWidth - 8) {
     left = clientX - tooltipWidth - 14;
   }
@@ -567,16 +682,16 @@ function BoxPlotTooltip({
       className="fixed z-[9999] pointer-events-none"
       style={{ left, top }}
     >
-      <div className="bg-gradient-to-br from-slate-800/95 to-slate-900/95 backdrop-blur-md border border-cyan-400/30 rounded-xl px-3 py-2 shadow-[0_8px_32px_rgba(0,0,0,0.4)] w-[160px]">
-        <div className="text-xs font-semibold text-cyan-300 mb-2 pb-2 border-b border-slate-600/50">
-          {title}
+      <div className="glass-card rounded-2xl p-4 shadow-apple-lg w-[160px] backdrop-blur-xl bg-[#FFFFFF]/90">
+        <div className="text-[13px] font-semibold text-[#1D1D1F] mb-1 pb-2 border-b border-[#0000000D]">
+          {metricName || title}
         </div>
-        <div className="space-y-1.5">
-          <TooltipRow label="最大值" value={stats.max} />
-          <TooltipRow label="75分位" value={stats.q75} />
-          <TooltipRow label="平均数" value={stats.mean} isMean />
-          <TooltipRow label="25分位" value={stats.q25} />
-          <TooltipRow label="最小值" value={stats.min} />
+        <div className="space-y-2">
+          <TooltipRow label="最大值" value={stats.max} isPercentage={isPercentage} />
+          <TooltipRow label="75分位" value={stats.q75} isPercentage={isPercentage} />
+          <TooltipRow label="平均数" value={stats.mean} isMean isPercentage={isPercentage} />
+          <TooltipRow label="25分位" value={stats.q25} isPercentage={isPercentage} />
+          <TooltipRow label="最小值" value={stats.min} isPercentage={isPercentage} />
         </div>
       </div>
     </div>
@@ -587,30 +702,25 @@ function TooltipRow({
   label,
   value,
   isMean,
-  showIndicator,
+  isPercentage = true,
 }: {
   label: string;
   value: number | null;
   isMean?: boolean;
-  showIndicator?: boolean;
+  isPercentage?: boolean;
 }) {
   const colorClass =
     value === null
-      ? 'text-slate-500'
+      ? 'text-[#A1A1A6]'
       : value >= 0
-      ? 'text-red-400'
-      : 'text-green-400';
+      ? 'text-[#DC2626]'
+      : 'text-[#16A34A]';
 
   return (
-    <div className="flex justify-between items-center text-xs">
-      <span className="text-slate-400 flex items-center gap-2">
-        {showIndicator && (
-          <span className={`w-1 h-1 rounded-full ${value === null ? 'bg-slate-600' : value >= 0 ? 'bg-red-400' : 'bg-green-400'}`} />
-        )}
-        {label}
-      </span>
-      <span className={`font-mono font-medium ${colorClass} ${isMean ? 'font-bold tracking-wide' : ''}`}>
-        {formatPercentage(value)}
+    <div className="flex justify-between items-center text-[13px]">
+      <span className="text-[#86868B]">{label}</span>
+      <span className={`font-semibold ${colorClass} ${isMean ? 'font-bold' : ''}`}>
+        {formatValue(value, isPercentage)}
       </span>
     </div>
   );

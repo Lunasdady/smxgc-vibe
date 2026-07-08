@@ -19,6 +19,7 @@ model FundProduct {
   isLargeScale               Boolean  // 是否为"100亿元以上"
   productName                String   // 产品名称
   strategyCategory           String?  // 策略分类（二级分类）
+  // === 旧字段（日期 < 2026-07-08）===
   weeklyReturn               Float?   // 近一周收益（%）
   monthlyReturn              Float?   // 近一月收益（%）
   ytdReturn                  Float?   // 今年以来收益（%）
@@ -27,6 +28,17 @@ model FundProduct {
   inceptionMaxDrawdown       Float?   // 成立以来最大回撤（%）
   annualizedVolatility       Float?   // 成立以来年化波动率（%）
   sharpeRatio                Float?   // 成立以来夏普比率
+
+  // === 新字段（日期 >= 2026-07-08，仅指增策略和套利策略）===
+  excessReturn1w             Float?   // 近一周超额收益（%）
+  excessReturn3m             Float?   // 近三月超额收益（%）
+  excessReturnYtd            Float?   // 今年以来超额收益（%）
+  excessAnnualizedReturn     Float?   // 成立以来超额年化收益（%）
+  excessYtdMaxDrawdown       Float?   // 今年以来超额最大回撤（%）
+  excessInceptionMaxDrawdown Float?   // 成立以来超额最大回撤（%）
+  excessAnnualizedVolatility Float?   // 成立以来超额年化波动率（%）
+  excessSharpeRatio          Float?   // 成立以来超额夏普比率
+  karmaRatio                 Float?   // 成立以来卡玛比率（套利策略）
 
   createdAt                  DateTime @default(now())
 

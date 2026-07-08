@@ -3,8 +3,9 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { STRATEGY_GROUPS, STRATEGY_NAME_MAP } from '@/lib/types';
+import { STRATEGY_GROUPS, STRATEGY_NAME_MAP, getFuturesStrategies, FUTURES_CUTOFF_DATE } from '@/lib/types';
 import { ChevronDown, ChevronRight, X, LayoutDashboard } from 'lucide-react';
+import { useAppStore } from '@/lib/store';
 
 interface SidebarProps {
   isOpen: boolean;
@@ -13,9 +14,21 @@ interface SidebarProps {
 
 export default function Sidebar({ isOpen, onClose }: SidebarProps) {
   const pathname = usePathname();
+  const { dataDate } = useAppStore();
   const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({
     '指增策略': true,
     '期货策略': true,
+  });
+
+  // 动态获取期货策略列表
+  const futuresStrategies = getFuturesStrategies(dataDate);
+  
+  // 构建动态策略分组
+  const dynamicStrategyGroups = STRATEGY_GROUPS.map(group => {
+    if (group.isDynamic) {
+      return { ...group, strategies: futuresStrategies };
+    }
+    return group;
   });
 
   const toggleGroup = (groupName: string) => {
@@ -81,7 +94,7 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
               <span className="text-[10px] font-semibold text-dark-textDim uppercase tracking-wider">策略分类</span>
             </div>
 
-            {STRATEGY_GROUPS.map((group) => {
+            {dynamicStrategyGroups.map((group) => {
               const hasSubmenu = group.hasSubmenu;
               const isExpanded = expandedGroups[group.name];
 

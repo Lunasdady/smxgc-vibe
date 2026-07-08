@@ -83,6 +83,19 @@ export function formatPercentage(value: number | null): string {
 }
 
 /**
+ * 格式化数值显示（支持非百分比指标如夏普比率）
+ */
+export function formatValue(value: number | null, isPercentage: boolean = true): string {
+  if (value === null || value === undefined) {
+    return '-';
+  }
+  if (isPercentage) {
+    return `${value.toFixed(2)}%`;
+  }
+  return value.toFixed(2);
+}
+
+/**
  * 从文件名提取数据日期
  */
 export function extractDataDateFromFilename(filename: string): string | null {

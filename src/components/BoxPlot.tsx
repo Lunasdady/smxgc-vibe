@@ -3,13 +3,16 @@
 import { useState, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { useRouter } from 'next/navigation';
-import { StrategyOverview, STRATEGY_NAME_MAP } from '@/lib/types';
-import { formatPercentage } from '@/lib/stats';
+import { StrategyOverview } from '@/lib/types';
+import { formatValue } from '@/lib/stats';
 
 interface BoxPlotProps {
   strategy: StrategyOverview;
   onClick: () => void;
   groupName?: string;
+  metric?: string;
+  metricName?: string;
+  isPercentage?: boolean;
 }
 
 interface TooltipData {
@@ -18,7 +21,7 @@ interface TooltipData {
   visible: boolean;
 }
 
-export default function BoxPlot({ strategy, onClick, groupName }: BoxPlotProps) {
+export default function BoxPlot({ strategy, onClick, groupName, metric, metricName, isPercentage = true }: BoxPlotProps) {
   const router = useRouter();
   const svgRef = useRef<SVGSVGElement>(null);
   const cardRef = useRef<HTMLDivElement>(null);
@@ -33,8 +36,8 @@ export default function BoxPlot({ strategy, onClick, groupName }: BoxPlotProps) 
 
   if (count === 0) {
     return (
-      <div className="bg-dark-card border border-dark-border rounded-xl p-5 min-h-[180px] flex items-center justify-center">
-        <p className="text-dark-textDim text-sm">暂无数据</p>
+      <div className="glass-card rounded-3xl min-h-[180px] flex items-center justify-center p-6">
+        <p className="text-[#86868B] text-[15px]">暂无数据</p>
       </div>
     );
   }
@@ -76,195 +79,173 @@ export default function BoxPlot({ strategy, onClick, groupName }: BoxPlotProps) 
     setTooltip({ clientX: 0, clientY: 0, visible: false });
   };
 
-  const handleSvgClick = (e: React.MouseEvent<SVGSVGElement>) => {
+  // Touch events for mobile - show on touch, hide on release
+  const handleTouchStart = (e: React.TouchEvent<SVGSVGElement>) => {
     if (!isTouchDevice) return;
     e.stopPropagation();
-    setTooltip(prev => ({
-      clientX: prev.clientX || e.clientX,
-      clientY: prev.clientY || e.clientY,
-      visible: !prev.visible,
-    }));
+    const touch = e.touches[0];
+    setTooltip({
+      clientX: touch.clientX,
+      clientY: touch.clientY,
+      visible: true,
+    });
   };
 
-  const handleCardClick = (e: React.MouseEvent) => {
-    // On touch devices, if tooltip is visible, clicking outside SVG should hide it
-    if (isTouchDevice && tooltip.visible) {
-      const target = e.target as HTMLElement;
-      if (!target.closest('svg')) {
-        setTooltip({ clientX: 0, clientY: 0, visible: false });
-        return;
-      }
-    }
-    onClick();
-  };
-
-  const handleDetailClick = (e: React.MouseEvent) => {
+  const handleTouchEnd = (e: React.TouchEvent<SVGSVGElement>) => {
+    if (!isTouchDevice) return;
     e.stopPropagation();
-    router.push(`/strategy/${strategyType}`);
+    setTooltip({ clientX: 0, clientY: 0, visible: false });
   };
 
-  // Determine if values are positive or negative for coloring
-  const valColor = (v: number | null) => {
-    if (v === null) return 'text-dark-textMuted';
-    return v >= 0 ? 'text-positive' : 'text-negative';
+  const handleTouchMove = (e: React.TouchEvent<SVGSVGElement>) => {
+    if (!isTouchDevice) return;
+    const touch = e.touches[0];
+    setTooltip({
+      clientX: touch.clientX,
+      clientY: touch.clientY,
+      visible: true,
+    });
   };
 
   return (
     <div
       ref={cardRef}
-      className="bg-dark-card border border-dark-border rounded-xl p-4 sm:p-5 hover:border-cyan-400/40 hover:bg-dark-cardHover transition-all duration-300 group cursor-pointer card-hover relative overflow-hidden"
-      onClick={handleCardClick}
+      className="group relative cursor-pointer"
+      onClick={onClick}
     >
-      {/* Subtle gradient overlay */}
-      <div className="absolute inset-0 bg-gradient-to-br from-cyan-400/0 to-cyan-400/0 group-hover:from-cyan-400/[0.02] group-hover:to-transparent transition-all duration-300 pointer-events-none" />
-      
       {/* Header */}
-      <div className="flex justify-between items-center mb-3 relative z-10">
-        <div className="flex items-center gap-2">
-          <div className="w-2 h-2 rounded-full bg-cyan-400 shadow-[0_0_6px_rgba(34,211,238,0.5)]" />
-          <h3 className="text-sm font-semibold text-dark-text tracking-wide">{strategyName}</h3>
+      <div className="flex justify-between items-start mb-4">
+        <div className="flex items-center gap-2.5">
+          <div className="w-2 h-2 rounded-full bg-[#0071E3]" />
+          <h3 className="text-[15px] font-semibold text-[#1D1D1F] tracking-tight">{strategyName}</h3>
         </div>
-        <span className="text-xs text-dark-textDim font-mono">{count} 只产品</span>
+        <span className="px-2 py-0.5 rounded-full bg-[#00000006] text-[12px] text-[#86868B] font-medium">
+          {count} 只
+        </span>
       </div>
 
       {/* Box Plot SVG */}
       <svg
         ref={svgRef}
         width="100%"
+        height={chartHeight}
         viewBox={`0 0 ${chartWidth} ${chartHeight}`}
-        className="overflow-hidden relative z-10"
+        className="overflow-hidden"
         onMouseMove={handleMouseMove}
         onMouseLeave={handleMouseLeave}
-        onClick={handleSvgClick}
+        onTouchStart={handleTouchStart}
+        onTouchEnd={handleTouchEnd}
+        onTouchMove={handleTouchMove}
       >
-          {/* Gradient definitions */}
-          <defs>
-            <linearGradient id="boxGradient" x1="0%" y1="0%" x2="100%" y2="0%">
-              <stop offset="0%" stopColor="#22d3ee" stopOpacity="0.6" />
-              <stop offset="50%" stopColor="#22d3ee" stopOpacity="1" />
-              <stop offset="100%" stopColor="#22d3ee" stopOpacity="0.6" />
-            </linearGradient>
-            <linearGradient id="whiskerGradient" x1="0%" y1="0%" x2="100%" y2="0%">
-              <stop offset="0%" stopColor="#64748B" stopOpacity="0.4" />
-              <stop offset="100%" stopColor="#64748B" stopOpacity="0.8" />
-            </linearGradient>
-          </defs>
+        <defs>
+          <linearGradient id="appleBoxGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+            <stop offset="0%" stopColor="#0071E3" stopOpacity="0.5" />
+            <stop offset="50%" stopColor="#0071E3" stopOpacity="0.8" />
+            <stop offset="100%" stopColor="#0071E3" stopOpacity="0.5" />
+          </linearGradient>
+          <linearGradient id="appleWhiskerGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+            <stop offset="0%" stopColor="#1D1D1F" stopOpacity="0.4" />
+            <stop offset="100%" stopColor="#1D1D1F" stopOpacity="0.7" />
+          </linearGradient>
+        </defs>
 
-          {/* Background grid line */}
-          <line
-            x1={padding}
-            y1={yCenter}
-            x2={chartWidth - padding}
-            y2={yCenter}
-            stroke="#2A3447"
-            strokeWidth="1"
-            strokeDasharray="4 4"
-          />
+        {/* Center line */}
+        <line
+          x1={padding}
+          y1={yCenter}
+          x2={chartWidth - padding}
+          y2={yCenter}
+          stroke="#00000020"
+          strokeWidth="1"
+          strokeDasharray="3 3"
+        />
 
-          {/* Whisker - left */}
-          {xMin !== null && xQ25 !== null && (
-            <>
-              <line
-                x1={xMin}
-                y1={yCenter}
-                x2={xQ25}
-                y2={yCenter}
-                stroke="url(#whiskerGradient)"
-                strokeWidth="1.5"
-              />
-              <line
-                x1={xMin}
-                y1={yCenter - whiskerHeight / 2}
-                x2={xMin}
-                y2={yCenter + whiskerHeight / 2}
-                stroke="#64748B"
-                strokeWidth="1.5"
-                strokeLinecap="round"
-              />
-            </>
-          )}
-
-          {/* Whisker - right */}
-          {xMax !== null && xQ75 !== null && (
-            <>
-              <line
-                x1={xQ75}
-                y1={yCenter}
-                x2={xMax}
-                y2={yCenter}
-                stroke="url(#whiskerGradient)"
-                strokeWidth="1.5"
-              />
-              <line
-                x1={xMax}
-                y1={yCenter - whiskerHeight / 2}
-                x2={xMax}
-                y2={yCenter + whiskerHeight / 2}
-                stroke="#64748B"
-                strokeWidth="1.5"
-                strokeLinecap="round"
-              />
-            </>
-          )}
-
-          {/* Box - enhanced with glow effect */}
-          {xQ25 !== null && xQ75 !== null && (
-            <>
-              {/* Glow layer */}
-              <rect
-                x={xQ25}
-                y={yCenter - boxHeight / 2}
-                width={Math.max(xQ75 - xQ25, 2)}
-                height={boxHeight}
-                fill="rgba(34, 211, 238, 0.08)"
-                rx="2"
-                className="blur-sm"
-              />
-              {/* Main box */}
-              <rect
-                x={xQ25}
-                y={yCenter - boxHeight / 2}
-                width={Math.max(xQ75 - xQ25, 2)}
-                height={boxHeight}
-                fill="rgba(34, 211, 238, 0.15)"
-                stroke="url(#boxGradient)"
-                strokeWidth="1.5"
-                rx="2"
-                className="transition-all duration-200"
-              />
-            </>
-          )}
-
-          {/* Median line */}
-          {xQ25 !== null && xQ75 !== null && (
+        {/* Whisker - left */}
+        {xMin !== null && xQ25 !== null && (
+          <>
             <line
-              x1={(xQ25 + xQ75) / 2}
-              y1={yCenter - boxHeight / 2}
-              x2={(xQ25 + xQ75) / 2}
-              y2={yCenter + boxHeight / 2}
-              stroke="#22d3ee"
+              x1={xMin}
+              y1={yCenter}
+              x2={xQ25}
+              y2={yCenter}
+              stroke="url(#appleWhiskerGradient)"
               strokeWidth="2"
             />
-          )}
+            <line
+              x1={xMin}
+              y1={yCenter - whiskerHeight / 2}
+              x2={xMin}
+              y2={yCenter + whiskerHeight / 2}
+              stroke="#1D1D1F"
+              strokeWidth="2"
+              strokeLinecap="round"
+              opacity="0.6"
+            />
+          </>
+        )}
 
-          {/* Mean dot */}
-          {xMean !== null && (
-            <circle
-              cx={xMean}
-              cy={yCenter}
-              r="5"
-              fill="#f87171"
-              stroke="#0B0F19"
+        {/* Whisker - right */}
+        {xMax !== null && xQ75 !== null && (
+          <>
+            <line
+              x1={xQ75}
+              y1={yCenter}
+              x2={xMax}
+              y2={yCenter}
+              stroke="url(#appleWhiskerGradient)"
               strokeWidth="2"
-              className="transition-all duration-200"
             />
-          )}
-        </svg>
+            <line
+              x1={xMax}
+              y1={yCenter - whiskerHeight / 2}
+              x2={xMax}
+              y2={yCenter + whiskerHeight / 2}
+              stroke="#1D1D1F"
+              strokeWidth="2"
+              strokeLinecap="round"
+              opacity="0.6"
+            />
+          </>
+        )}
+
+        {/* Box */}
+        {xQ25 !== null && xQ75 !== null && (
+          <>
+            <rect
+              x={xQ25}
+              y={yCenter - boxHeight / 2}
+              width={Math.max(xQ75 - xQ25, 2)}
+              height={boxHeight}
+              fill="url(#appleBoxGradient)"
+              rx="4"
+              stroke="#0071E3"
+              strokeWidth="1.5"
+              className="transition-all duration-300 ease-apple group-hover:stroke-[#0077ED]"
+            />
+          </>
+        )}
+
+        {/* Mean dot */}
+        {xMean !== null && (
+          <circle
+            cx={xMean}
+            cy={yCenter}
+            r="4"
+            fill="#FFFFFF"
+            stroke="#0071E3"
+            strokeWidth="2"
+            className="transition-all duration-300"
+          />
+        )}
+      </svg>
+
+      {/* Footer removed - duplicate detail button */}
 
       {/* Tooltip via Portal */}
       {tooltip.visible && createPortal(
         <BoxPlotTooltip
           strategyName={strategyName}
+          metricName={metricName}
           min={min}
           q25={q25}
           mean={mean}
@@ -272,37 +253,17 @@ export default function BoxPlot({ strategy, onClick, groupName }: BoxPlotProps) 
           max={max}
           clientX={tooltip.clientX}
           clientY={tooltip.clientY}
+          isPercentage={isPercentage}
         />,
         document.body
       )}
-
-      {/* Footer */}
-      <div className="mt-3 flex items-center justify-between relative z-10">
-        <div className="flex items-center gap-3 text-xs text-dark-textDim">
-          <span className="flex items-center gap-1">
-            <span className="w-1.5 h-1.5 rounded-full bg-cyan-400/60" />
-            中位数
-          </span>
-          <span className="flex items-center gap-1">
-            <span className="w-1.5 h-1.5 rounded-full bg-red-400" />
-            均值
-          </span>
-        </div>
-        <button
-          type="button"
-          className="text-xs text-cyan-400 hover:text-cyan-300 transition-all duration-200 font-medium opacity-0 group-hover:opacity-100 flex items-center gap-1 hover:gap-2"
-          onClick={handleDetailClick}
-        >
-          <span>查看明细</span>
-          <span className="transition-transform duration-200 group-hover:translate-x-0.5">→</span>
-        </button>
-      </div>
     </div>
   );
 }
 
 function BoxPlotTooltip({
   strategyName,
+  metricName,
   min,
   q25,
   mean,
@@ -310,8 +271,10 @@ function BoxPlotTooltip({
   max,
   clientX,
   clientY,
+  isPercentage = true,
 }: {
   strategyName: string;
+  metricName?: string;
   min: number | null;
   q25: number | null;
   mean: number | null;
@@ -319,9 +282,10 @@ function BoxPlotTooltip({
   max: number | null;
   clientX: number;
   clientY: number;
+  isPercentage?: boolean;
 }) {
   const tooltipWidth = 170;
-  const tooltipHeight = 160;
+  const tooltipHeight = 180;
 
   let left = clientX + 16;
   let top = clientY - tooltipHeight / 2;
@@ -345,17 +309,16 @@ function BoxPlotTooltip({
       className="fixed z-[9999] pointer-events-none"
       style={{ left, top }}
     >
-      <div className="bg-gradient-to-br from-slate-800/95 to-slate-900/95 backdrop-blur-md border border-cyan-400/30 rounded-xl px-3 py-2 shadow-[0_8px_32px_rgba(0,0,0,0.4)] w-[170px]">
-        <div className="text-xs font-semibold text-cyan-300 mb-2 pb-2 border-b border-slate-600/50 flex items-center gap-2">
-          <div className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse" />
-          {strategyName}
+      <div className="glass-card rounded-2xl p-4 shadow-apple-lg w-[170px] backdrop-blur-xl bg-[#FFFFFF]/90">
+        <div className="text-[13px] font-semibold text-[#1D1D1F] mb-1 pb-2 border-b border-[#0000000D]">
+          {metricName || strategyName}
         </div>
-        <div className="space-y-1.5">
-          <TooltipRow label="最大值" value={max} />
-          <TooltipRow label="75分位" value={q75} />
-          <TooltipRow label="平均数" value={mean} isMean />
-          <TooltipRow label="25分位" value={q25} />
-          <TooltipRow label="最小值" value={min} />
+        <div className="space-y-2">
+          <TooltipRow label="最大值" value={max} isPercentage={isPercentage} />
+          <TooltipRow label="75分位" value={q75} isPercentage={isPercentage} />
+          <TooltipRow label="平均数" value={mean} isMean isPercentage={isPercentage} />
+          <TooltipRow label="25分位" value={q25} isPercentage={isPercentage} />
+          <TooltipRow label="最小值" value={min} isPercentage={isPercentage} />
         </div>
       </div>
     </div>
@@ -366,30 +329,25 @@ function TooltipRow({
   label,
   value,
   isMean,
-  showIndicator,
+  isPercentage = true,
 }: {
   label: string;
   value: number | null;
   isMean?: boolean;
-  showIndicator?: boolean;
+  isPercentage?: boolean;
 }) {
   const colorClass =
     value === null
-      ? 'text-slate-500'
+      ? 'text-[#A1A1A6]'
       : value >= 0
-      ? 'text-red-400'
-      : 'text-green-400';
+      ? 'text-[#DC2626]'
+      : 'text-[#16A34A]';
 
   return (
-    <div className="flex justify-between items-center text-xs group">
-      <span className="text-slate-400 flex items-center gap-2">
-        {showIndicator && (
-          <span className={`w-1 h-1 rounded-full ${value === null ? 'bg-slate-600' : value >= 0 ? 'bg-red-400' : 'bg-green-400'}`} />
-        )}
-        {label}
-      </span>
-      <span className={`font-mono font-medium ${colorClass} ${isMean ? 'font-bold tracking-wide' : ''}`}>
-        {formatPercentage(value)}
+    <div className="flex justify-between items-center text-[13px]">
+      <span className="text-[#86868B]">{label}</span>
+      <span className={`font-semibold ${colorClass} ${isMean ? 'font-bold' : ''}`}>
+        {formatValue(value, isPercentage)}
       </span>
     </div>
   );

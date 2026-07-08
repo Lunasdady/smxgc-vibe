@@ -186,24 +186,60 @@ async function executeImport(file: File, dataDate: Date, importId: string) {
       }
 
       try {
+        // 根据数据日期和策略类型判断使用新旧字段
+        const date = new Date(dataDate);
+        const cutoffDate = new Date('2026-07-08');
+        const isNewFields = date >= cutoffDate;
+        // 所有指增策略（包括300）和套利策略
+        const indexEnhancedTypes = ['index-enhanced-300', 'index-enhanced-500', 'index-enhanced-1000', 'index-enhanced-2000', 'index-enhanced-alternative'];
+        const isIndexEnhanced = indexEnhancedTypes.includes(strategyType);
+        const isArbitrage = strategyType === 'arbitrage';
+        
+        const productData: any = {
+          dataDate,
+          strategyType,
+          fundManager: String(rowObj['基金管理人'] || ''),
+          managerScale: String(rowObj['管理人规模'] || ''),
+          isLargeScale: String(rowObj['管理人规模'] || '').includes('100亿'),
+          productName: String(rowObj['产品名称'] || ''),
+          strategyCategory: rowObj['策略分类'] ? String(rowObj['策略分类']) : null,
+        };
+        
+        // 根据日期和策略类型映射字段
+        if (isNewFields && isIndexEnhanced) {
+          // 指增策略使用新字段
+          productData.excessReturn1w = parseDecimalNumber(rowObj['近一周超额收益']);
+          productData.excessReturn3m = parseDecimalNumber(rowObj['近三月超额收益']);
+          productData.excessReturnYtd = parseDecimalNumber(rowObj['今年以来超额收益']);
+          productData.excessAnnualizedReturn = parseDecimalNumber(rowObj['成立以来超额年化收益']);
+          productData.excessYtdMaxDrawdown = parseDecimalNumber(rowObj['今年以来超额最大回撤']);
+          productData.excessInceptionMaxDrawdown = parseDecimalNumber(rowObj['成立以来超额最大回撤']);
+          productData.excessAnnualizedVolatility = parseDecimalNumber(rowObj['成立以来超额年化波动率']);
+          productData.excessSharpeRatio = parseDecimalNumber(rowObj['成立以来超额夏普比率']);
+        } else if (isNewFields && isArbitrage) {
+          // 套利策略：只有卡玛比率是新字段，其他用旧字段
+          productData.weeklyReturn = parseDecimalNumber(rowObj['近一周收益']);
+          productData.monthlyReturn = parseDecimalNumber(rowObj['近一月收益']);
+          productData.ytdReturn = parseDecimalNumber(rowObj['今年以来收益']);
+          productData.annualizedReturnSinceInception = parseDecimalNumber(rowObj['成立以来年化收益']);
+          productData.ytdMaxDrawdown = parseDecimalNumber(rowObj['今年以来最大回撤']);
+          productData.inceptionMaxDrawdown = parseDecimalNumber(rowObj['成立以来最大回撤']);
+          productData.annualizedVolatility = parseDecimalNumber(rowObj['成立以来年化波动率']);
+          productData.karmaRatio = parseDecimalNumber(rowObj['成立以来卡玛比率']);
+        } else {
+          // 其他策略使用旧字段
+          productData.weeklyReturn = parseDecimalNumber(rowObj['近一周收益']);
+          productData.monthlyReturn = parseDecimalNumber(rowObj['近一月收益']);
+          productData.ytdReturn = parseDecimalNumber(rowObj['今年以来收益']);
+          productData.annualizedReturnSinceInception = parseDecimalNumber(rowObj['成立以来年化收益']);
+          productData.ytdMaxDrawdown = parseDecimalNumber(rowObj['今年以来最大回撤']);
+          productData.inceptionMaxDrawdown = parseDecimalNumber(rowObj['成立以来最大回撤']);
+          productData.annualizedVolatility = parseDecimalNumber(rowObj['成立以来年化波动率']);
+          productData.sharpeRatio = parseDecimalNumber(rowObj['成立以来夏普比率']);
+        }
+        
         await prisma.fundProduct.create({
-          data: {
-            dataDate,
-            strategyType,
-            fundManager: String(rowObj['基金管理人'] || ''),
-            managerScale: String(rowObj['管理人规模'] || ''),
-            isLargeScale: String(rowObj['管理人规模'] || '').includes('100亿'),
-            productName: String(rowObj['产品名称'] || ''),
-            strategyCategory: rowObj['策略分类'] ? String(rowObj['策略分类']) : null,
-            weeklyReturn: parseDecimalNumber(rowObj['近一周收益']),
-            monthlyReturn: parseDecimalNumber(rowObj['近一月收益']),
-            ytdReturn: parseDecimalNumber(rowObj['今年以来收益']),
-            annualizedReturnSinceInception: parseDecimalNumber(rowObj['成立以来年化收益']),
-            ytdMaxDrawdown: parseDecimalNumber(rowObj['今年以来最大回撤']),
-            inceptionMaxDrawdown: parseDecimalNumber(rowObj['成立以来最大回撤']),
-            annualizedVolatility: parseDecimalNumber(rowObj['成立以来年化波动率']),
-            sharpeRatio: parseDecimalNumber(rowObj['成立以来夏普比率']),
-          },
+          data: productData,
         });
         sheetImported++;
         totalImported++;

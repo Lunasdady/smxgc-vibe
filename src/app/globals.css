@@ -3,36 +3,38 @@
 @tailwind utilities;
 
 :root {
-  --bg-primary: #0B0F19;
-  --bg-card: #151B2B;
-  --bg-card-hover: #1A2236;
-  --border-color: #2A3447;
-  --text-primary: #E2E8F0;
-  --text-muted: #94A3B8;
-  --text-dim: #64748B;
-  --accent: #22d3ee;
-  --accent-dim: #0891b2;
-  --positive: #f87171;
-  --negative: #4ade80;
+  --bg-primary: #F5F5F7;
+  --bg-card: rgba(255, 255, 255, 0.72);
+  --bg-card-solid: #FFFFFF;
+  --border-color: rgba(0, 0, 0, 0.08);
+  --text-primary: #1D1D1F;
+  --text-secondary: #86868B;
+  --text-tertiary: #A1A1A6;
+  --accent: #0071E3;
+  --accent-hover: #0077ED;
+  --positive: #DC2626;
+  --negative: #16A34A;
 }
 
 body {
   color: var(--text-primary);
   background-color: var(--bg-primary);
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro SC", "SF Pro Text", "Helvetica Neue", Helvetica, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", Arial, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   overflow-x: hidden;
+  line-height: 1.5;
 }
 
 html {
   overflow-x: hidden;
+  scroll-behavior: smooth;
 }
 
-/* Scrollbar styling */
+/* Scrollbar styling - Apple style thin scrollbar */
 ::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: 8px;
+  height: 8px;
 }
 
 ::-webkit-scrollbar-track {
@@ -40,12 +42,16 @@ html {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #334155;
-  border-radius: 3px;
+  background: rgba(0, 0, 0, 0.15);
+  border-radius: 100px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #475569;
+  background: rgba(0, 0, 0, 0.25);
+  border: 2px solid transparent;
+  background-clip: padding-box;
 }
 
 @layer utilities {
@@ -54,11 +60,37 @@ html {
   }
 }
 
-/* Smooth animations */
-@keyframes fadeIn {
+/* Apple-style glassmorphism card */
+.glass-card {
+  background: rgba(255, 255, 255, 0.72);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.04), 0 1px 2px rgba(0, 0, 0, 0.02);
+}
+
+.glass-card-hover {
+  transition: all 0.5s cubic-bezier(0.25, 1, 0.5, 1);
+}
+
+.glass-card-hover:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.08), 0 4px 12px rgba(0, 0, 0, 0.04);
+}
+
+/* Apple-style nav glass */
+.nav-glass {
+  background: rgba(255, 255, 255, 0.72);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+/* Fade-in-up animation for scroll reveals */
+@keyframes fadeInUp {
   from {
     opacity: 0;
-    transform: translateY(10px);
+    transform: translateY(24px);
   }
   to {
     opacity: 1;
@@ -66,57 +98,106 @@ html {
   }
 }
 
-@keyframes slideIn {
+@keyframes countUp {
   from {
     opacity: 0;
-    transform: translateX(-10px);
+    transform: translateY(8px);
   }
   to {
     opacity: 1;
-    transform: translateX(0);
+    transform: translateY(0);
   }
 }
 
-@keyframes pulse-glow {
-  0%, 100% {
-    box-shadow: 0 0 4px rgba(34, 211, 238, 0.3);
-  }
-  50% {
-    box-shadow: 0 0 12px rgba(34, 211, 238, 0.6);
-  }
+.animate-fade-in-up {
+  animation: fadeInUp 0.8s cubic-bezier(0.25, 1, 0.5, 1) forwards;
 }
 
-.animate-fade-in {
-  animation: fadeIn 0.3s ease-out;
+.animate-count-up {
+  animation: countUp 0.6s cubic-bezier(0.25, 1, 0.5, 1) forwards;
 }
 
-.animate-slide-in {
-  animation: slideIn 0.3s ease-out;
+/* Stagger delays */
+.delay-100 { animation-delay: 100ms; }
+.delay-200 { animation-delay: 200ms; }
+.delay-300 { animation-delay: 300ms; }
+.delay-400 { animation-delay: 400ms; }
+.delay-500 { animation-delay: 500ms; }
+.delay-600 { animation-delay: 600ms; }
+
+/* Scroll reveal initial state */
+.scroll-reveal {
+  opacity: 0;
+  transform: translateY(24px);
+  transition: opacity 0.8s cubic-bezier(0.25, 1, 0.5, 1), transform 0.8s cubic-bezier(0.25, 1, 0.5, 1);
 }
 
-.animate-pulse-glow {
-  animation: pulse-glow 2s ease-in-out infinite;
-}
-
-/* Card hover effects */
-.card-hover {
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-.card-hover:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+.scroll-reveal.revealed {
+  opacity: 1;
+  transform: translateY(0);
 }
 
 /* Smooth focus states */
 .focus-ring {
-  @apply focus:outline-none focus:ring-2 focus:ring-cyan-400/50 focus:ring-offset-2 focus:ring-offset-dark-bg;
+  @apply focus:outline-none focus:ring-2 focus:ring-[#0071E3]/30 focus:ring-offset-2 focus:ring-offset-[#F5F5F7];
 }
 
-/* Gradient text */
-.gradient-text {
-  background: linear-gradient(135deg, #22d3ee 0%, #3b82f6 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
+/* Apple button style */
+.btn-apple {
+  @apply inline-flex items-center justify-center px-5 py-2.5 rounded-full text-sm font-medium transition-all duration-300;
+  background: #0071E3;
+  color: white;
+  transition-timing-function: cubic-bezier(0.25, 1, 0.5, 1);
+}
+
+.btn-apple:hover {
+  background: #0077ED;
+  transform: scale(1.02);
+  box-shadow: 0 4px 16px rgba(0, 113, 227, 0.3);
+}
+
+/* Large title style */
+.large-title {
+  font-size: clamp(40px, 5vw, 64px);
+  font-weight: 700;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+}
+
+/* Section title */
+.section-title {
+  font-size: clamp(28px, 3.5vw, 40px);
+  font-weight: 600;
+  line-height: 1.2;
+  letter-spacing: -0.015em;
+}
+
+/* Metric number style */
+.metric-number {
+  font-size: clamp(32px, 4vw, 48px);
+  font-weight: 600;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Logo accent line animation */
+.logo-accent-line {
+  transition: stroke-dashoffset 0.4s cubic-bezier(0.25, 1, 0.5, 1), opacity 0.3s ease;
+  stroke-dasharray: 10;
+  stroke-dashoffset: 0;
+}
+
+.logo-container:hover .logo-accent-line {
+  stroke-dashoffset: -10;
+  animation: logoAccentBreath 2s ease-in-out infinite;
+}
+
+@keyframes logoAccentBreath {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.6;
+  }
 }

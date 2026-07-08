@@ -29,27 +29,27 @@ export default function DateSelector() {
   };
 
   return (
-    <div className="w-full">
-      <label className="hidden sm:block text-[10px] font-semibold text-dark-textDim uppercase tracking-wider mb-1.5">
-        数据日期
-      </label>
-      <div className="relative">
-        <Calendar className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-dark-textDim pointer-events-none" />
-        <select
-          value={dataDate || ''}
-          onChange={handleChange}
-          className="w-full pl-8 pr-3 py-1.5 bg-dark-card border border-dark-border rounded-lg text-sm text-dark-text focus:outline-none focus:ring-2 focus:ring-cyan-400/30 focus:border-cyan-400/50 transition-all appearance-none cursor-pointer hover:border-dark-border/80"
-        >
-          {availableDates.length === 0 ? (
-            <option value="">暂无数据</option>
-          ) : (
-            availableDates.map((date) => (
-              <option key={date} value={date} className="bg-dark-card text-dark-text">
-                {dayjs(date).format('YYYY-MM-DD')}
-              </option>
-            ))
-          )}
-        </select>
+    <div className="relative">
+      <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#86868B] pointer-events-none" />
+      <select
+        value={dataDate || ''}
+        onChange={handleChange}
+        className="pl-9 pr-8 py-2 bg-[#FFFFFF] border border-[#0000000D] rounded-full text-[14px] text-[#1D1D1F] font-medium focus:outline-none focus:ring-2 focus:ring-[#0071E3]/30 transition-all appearance-none cursor-pointer hover:border-[#0000001A] hover:bg-[#FAFAFA] transition-all duration-300 ease-apple"
+      >
+        {availableDates.length === 0 ? (
+          <option value="">暂无数据</option>
+        ) : (
+          availableDates.map((date) => (
+            <option key={date} value={date} className="bg-white text-[#1D1D1F]">
+              {dayjs(date).format('YYYY-MM-DD')}
+            </option>
+          ))
+        )}
+      </select>
+      <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none">
+        <svg className="w-4 h-4 text-[#86868B]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+        </svg>
       </div>
     </div>
   );

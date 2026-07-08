@@ -5,10 +5,20 @@ interface AppState {
   dataDate: string | null;
   // 所有可用的数据日期列表
   availableDates: string[];
+  // 当前选中的指标字段
+  metric: string;
+  // 首页顶部文案
+  heroTitle: string;
+  heroSubtitle: string;
   // 设置数据日期
   setDataDate: (date: string) => void;
   // 设置可用日期列表
   setAvailableDates: (dates: string[]) => void;
+  // 设置指标字段
+  setMetric: (metric: string) => void;
+  // 设置首页文案
+  setHeroTitle: (title: string) => void;
+  setHeroSubtitle: (subtitle: string) => void;
   // 初始化时获取最新日期
   initialize: () => Promise<void>;
 }
@@ -16,14 +26,28 @@ interface AppState {
 export const useAppStore = create<AppState>((set, get) => ({
   dataDate: null,
   availableDates: [],
+  metric: 'weeklyReturn',
+  heroTitle: typeof window !== 'undefined' ? (localStorage.getItem('heroTitle') || '穿越周期的<span className="text-[#0071E3]">价值投资</span>') : '穿越周期的<span className="text-[#0071E3]">价值投资</span>',
+  heroSubtitle: typeof window !== 'undefined' ? (localStorage.getItem('heroSubtitle') || '私募星工场全量业绩跟踪平台，实时监控多维度策略表现') : '私募星工场全量业绩跟踪平台，实时监控多维度策略表现',
   setDataDate: (date) => set({ dataDate: date }),
   setAvailableDates: (dates) => set({ availableDates: dates }),
+  setMetric: (metric) => set({ metric }),
+  setHeroTitle: (title) => set({ heroTitle: title }),
+  setHeroSubtitle: (subtitle) => set({ heroSubtitle: subtitle }),
   initialize: async () => {
     try {
       const response = await fetch('/api/data/latest-date');
       const data = await response.json();
       if (data.date) {
-        set({ dataDate: data.date });
+        // 检查日期是否 >= 2026-07-08，如果是则使用新字段
+        const cutoffDate = new Date('2026-07-08');
+        const dataDateObj = new Date(data.date);
+        const shouldUseNewMetric = dataDateObj >= cutoffDate;
+        
+        set({ 
+          dataDate: data.date,
+          metric: shouldUseNewMetric ? 'excessReturn1w' : 'weeklyReturn'
+        });
       }
       // 获取所有可用日期
       const datesResponse = await fetch('/api/data/dates');

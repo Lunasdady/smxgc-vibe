@@ -10,6 +10,10 @@ export default function DateSelector() {
 
   useEffect(() => {
     fetchDates();
+    // 暴露刷新方法给全局，供管理端调用
+    if (typeof window !== 'undefined') {
+      (window as any).refreshDates = fetchDates;
+    }
   }, []);
 
   const fetchDates = async () => {
@@ -23,11 +27,6 @@ export default function DateSelector() {
       console.error('Failed to fetch dates:', error);
     }
   };
-
-  // 暴露刷新方法给全局，供管理端调用
-  if (typeof window !== 'undefined') {
-    (window as any).refreshDates = fetchDates;
-  }
 
   const handleChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     setDataDate(e.target.value);

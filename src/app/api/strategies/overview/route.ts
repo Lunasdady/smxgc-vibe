@@ -19,7 +19,6 @@ const NEW_TO_OLD_METRIC_MAP: Record<string, string> = {
 function getActualMetric(metric: string, strategyType: string, dataDate: string): string {
   const date = new Date(dataDate);
   const cutoffDate = new Date('2026-07-08');
-  if (date < cutoffDate) return metric;
 
   const indexEnhancedTypes = [
     'index-enhanced-300',
@@ -30,10 +29,26 @@ function getActualMetric(metric: string, strategyType: string, dataDate: string)
   ];
   const isIndexEnhanced = indexEnhancedTypes.includes(strategyType);
 
-  // 指增策略直接使用请求的metric（新字段）
-  if (isIndexEnhanced) return metric;
+  // 日期 >= 2026-07-08：指增策略必须使用新字段
+  if (date >= cutoffDate && isIndexEnhanced) {
+    // 如果传入的是旧字段，映射为新字段
+    const oldToNewMap: Record<string, string> = {
+      weeklyReturn: 'excessReturn1w',
+      monthlyReturn: 'excessReturn3m',
+      ytdReturn: 'excessReturnYtd',
+      annualizedReturnSinceInception: 'excessAnnualizedReturn',
+      ytdMaxDrawdown: 'excessYtdMaxDrawdown',
+      inceptionMaxDrawdown: 'excessInceptionMaxDrawdown',
+      annualizedVolatility: 'excessAnnualizedVolatility',
+      sharpeRatio: 'excessSharpeRatio',
+    };
+    return oldToNewMap[metric] || metric;
+  }
 
-  // 非指增策略：将新字段映射回旧字段，若无映射则保持原metric
+  // 日期 < 2026-07-08：保持原metric
+  if (date < cutoffDate) return metric;
+
+  // 非指增策略：将新字段映射回旧字段
   return NEW_TO_OLD_METRIC_MAP[metric] || metric;
 }
 

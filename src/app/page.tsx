@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAppStore } from '@/lib/store';
 import { StrategyOverview, STRATEGY_GROUPS, STRATEGY_NAME_MAP, getMetricFields, getFuturesStrategies } from '@/lib/types';
@@ -31,32 +31,46 @@ export default function HomePage() {
     return group;
   });
 
-  // 使用动态指标字段（首页不指定策略类型，使用旧字段）
+  // 使用动态指标字段（首页不指定策略类型，使用指增新字段）
   const metricFields = getMetricFields(dataDate, null);
   const currentMetric = metricFields.find(m => m.key === metric) || metricFields[0];
 
+  // 只初始化一次
+  const initializedRef = useRef(false);
   useEffect(() => {
-    initialize();
+    if (!initializedRef.current) {
+      initializedRef.current = true;
+      initialize();
+    }
   }, [initialize]);
 
   useEffect(() => {
-    if (dataDate && metric) {
-      fetchStrategyOverview();
-    }
-  }, [dataDate, metric, futuresStrategies]);
-
-  const fetchStrategyOverview = async () => {
-    setLoading(true);
-    try {
-      const response = await fetch(`/api/strategies/overview?dataDate=${dataDate}&metric=${metric}`);
-      const data = await response.json();
-      setStrategies(data.strategies || []);
-    } catch (error) {
-      console.error('Failed to fetch strategy overview:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
+    if (!dataDate || !metric) return;
+    
+    const controller = new AbortController();
+    
+    const fetchData = async () => {
+      setLoading(true);
+      try {
+        const response = await fetch(
+          `/api/strategies/overview?dataDate=${dataDate}&metric=${metric}`,
+          { signal: controller.signal }
+        );
+        const data = await response.json();
+        setStrategies(data.strategies || []);
+      } catch (error: any) {
+        if (error.name !== 'AbortError') {
+          console.error('Failed to fetch strategy overview:', error);
+        }
+      } finally {
+        setLoading(false);
+      }
+    };
+    
+    fetchData();
+    
+    return () => controller.abort();
+  }, [dataDate, metric]);
 
   // Build a map for quick lookup
   const strategyMap = new Map(strategies.map((s) => [s.strategyType, s]));

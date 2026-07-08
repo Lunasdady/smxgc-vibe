@@ -294,6 +294,10 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
             if (data.status === 'completed') {
               setMessage(data.message || '数据导入成功！');
               fetchStatus();
+              // 刷新全局日期列表
+              if (typeof window !== 'undefined' && (window as any).refreshDates) {
+                (window as any).refreshDates();
+              }
               setFile(null);
               setPreview(null);
               
@@ -359,6 +363,10 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
         const data = await response.json();
         setMessage(data.message);
         fetchStatus();
+        // 刷新全局日期列表
+        if (typeof window !== 'undefined' && (window as any).refreshDates) {
+          (window as any).refreshDates();
+        }
         if (deleteTarget === 'range') {
           setDateRange({ startDate: '', endDate: '' });
         }

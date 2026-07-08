@@ -31,11 +31,16 @@ export default function StrategyPage({ params }: StrategyPageProps) {
   const [isTableFullscreen, setIsTableFullscreen] = useState(false);
   const pageSize = 20;
 
+  // 只初始化一次
+  const initializedRef = useRef(false);
+
   const strategyType = params.type;
 
   // 使用动态指标字段
   const metricFields = getMetricFields(dataDate, strategyType);
+  // 策略详情页使用自己策略类型对应的 metric，而不是 store 中的全局 metric
   const currentMetric = metricFields.find(m => m.key === metric) || metricFields[0];
+  const actualMetric = currentMetric?.key || 'weeklyReturn';
 
   // 根据日期动态计算实际显示的策略名称
   const getActualStrategyName = () => {
@@ -81,14 +86,45 @@ export default function StrategyPage({ params }: StrategyPageProps) {
   const tableReveal = useScrollReveal();
 
   useEffect(() => {
-    initialize();
+    if (!initializedRef.current) {
+      initializedRef.current = true;
+      initialize();
+    }
   }, [initialize]);
 
   useEffect(() => {
-    if (dataDate) {
-      fetchData();
-    }
-  }, [dataDate, strategyType, metric]);
+    if (!dataDate) return;
+    
+    const controller = new AbortController();
+    
+    const fetchData = async () => {
+      setLoading(true);
+      try {
+        const [summaryRes, productsRes] = await Promise.all([
+          fetch(`/api/strategies/${strategyType}/group-summary?dataDate=${dataDate}&metric=${actualMetric}`, {
+            signal: controller.signal
+          }),
+          fetch(`/api/strategies/${strategyType}/products?dataDate=${dataDate}&page=1&limit=1000`, {
+            signal: controller.signal
+          }),
+        ]);
+        const summaryData = await summaryRes.json();
+        const productsData = await productsRes.json();
+        setGroupSummary(summaryData);
+        setProducts(productsData.products || []);
+      } catch (error: any) {
+        if (error.name !== 'AbortError') {
+          console.error('Failed to fetch strategy data:', error);
+        }
+      } finally {
+        setLoading(false);
+      }
+    };
+    
+    fetchData();
+    
+    return () => controller.abort();
+  }, [dataDate, strategyType, actualMetric]);
 
   // Force reveal after data loads (same as homepage fix)
   useEffect(() => {
@@ -100,11 +136,11 @@ export default function StrategyPage({ params }: StrategyPageProps) {
     }
   }, [loading, groupSummary]);
 
-  const fetchData = async () => {
+  const fetchData = async (metricToFetch: string) => {
     setLoading(true);
     try {
       const [summaryRes, productsRes] = await Promise.all([
-        fetch(`/api/strategies/${strategyType}/group-summary?dataDate=${dataDate}&metric=${metric}`),
+        fetch(`/api/strategies/${strategyType}/group-summary?dataDate=${dataDate}&metric=${metricToFetch}`),
         fetch(`/api/strategies/${strategyType}/products?dataDate=${dataDate}&page=1&limit=1000`),
       ]);
       const summaryData = await summaryRes.json();

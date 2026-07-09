@@ -72,7 +72,7 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
           {/* Logo area - desktop */}
           <div className="hidden md:flex items-center gap-2 px-4 py-4 border-b border-dark-border">
             <LayoutDashboard className="w-5 h-5 text-cyan-400" />
-            <span className="text-sm font-bold text-dark-text tracking-wide">私募星工场</span>
+            <span className="text-sm font-bold text-dark-text tracking-wide">私募星工厂</span>
           </div>
 
           {/* Menu */}

@@ -28,7 +28,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   availableDates: [],
   metric: 'weeklyReturn',
   heroTitle: typeof window !== 'undefined' ? (localStorage.getItem('heroTitle') || '穿越周期的<span className="text-[#0071E3]">价值投资</span>') : '穿越周期的<span className="text-[#0071E3]">价值投资</span>',
-  heroSubtitle: typeof window !== 'undefined' ? (localStorage.getItem('heroSubtitle') || '私募星工场全量业绩跟踪平台，实时监控多维度策略表现') : '私募星工场全量业绩跟踪平台，实时监控多维度策略表现',
+  heroSubtitle: typeof window !== 'undefined' ? (localStorage.getItem('heroSubtitle') || '私募星工厂全量业绩跟踪平台，实时监控多维度策略表现') : '私募星工厂全量业绩跟踪平台，实时监控多维度策略表现',
   setDataDate: (date) => set({ dataDate: date }),
   setAvailableDates: (dates) => set({ availableDates: dates }),
   setMetric: (metric) => set({ metric }),
@@ -36,24 +36,39 @@ export const useAppStore = create<AppState>((set, get) => ({
   setHeroSubtitle: (subtitle) => set({ heroSubtitle: subtitle }),
   initialize: async () => {
     try {
-      const response = await fetch('/api/data/latest-date');
-      const data = await response.json();
-      if (data.date) {
-        // 检查日期是否 >= 2026-07-08，如果是则使用新字段
+      // 并行获取最新日期和首页文案
+      const [dateResponse, heroResponse] = await Promise.all([
+        fetch('/api/data/latest-date'),
+        fetch('/api/admin/hero-text'),
+      ]);
+
+      const dateData = await dateResponse.json();
+      const heroData = await heroResponse.json();
+
+      if (dateData.date) {
         const cutoffDate = new Date('2026-07-08');
-        const dataDateObj = new Date(data.date);
+        const dataDateObj = new Date(dateData.date);
         const shouldUseNewMetric = dataDateObj >= cutoffDate;
-        
-        set({ 
-          dataDate: data.date,
+
+        set({
+          dataDate: dateData.date,
           metric: shouldUseNewMetric ? 'excessReturn1w' : 'weeklyReturn'
         });
       }
+
       // 获取所有可用日期
       const datesResponse = await fetch('/api/data/dates');
       const datesData = await datesResponse.json();
       if (datesData.dates) {
         set({ availableDates: datesData.dates });
+      }
+
+      // 设置首页文案
+      if (heroData.heroTitle) {
+        set({ heroTitle: heroData.heroTitle });
+      }
+      if (heroData.heroSubtitle) {
+        set({ heroSubtitle: heroData.heroSubtitle });
       }
     } catch (error) {
       console.error('Failed to initialize app store:', error);

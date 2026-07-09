@@ -165,18 +165,33 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
     loadHeroText();
   }, []);
 
-  const loadHeroText = () => {
-    const savedTitle = localStorage.getItem('heroTitle');
-    const savedSubtitle = localStorage.getItem('heroSubtitle');
-    if (savedTitle) setHeroTitle(savedTitle);
-    if (savedSubtitle) setHeroSubtitle(savedSubtitle);
+  const loadHeroText = async () => {
+    try {
+      const response = await fetch('/api/admin/hero-text');
+      const data = await response.json();
+      if (data.heroTitle) setHeroTitle(data.heroTitle);
+      if (data.heroSubtitle) setHeroSubtitle(data.heroSubtitle);
+    } catch (error) {
+      console.error('Failed to load hero text:', error);
+    }
   };
 
-  const saveHeroText = () => {
-    localStorage.setItem('heroTitle', heroTitle);
-    localStorage.setItem('heroSubtitle', heroSubtitle);
-    setMessage('首页文案已更新，请刷新首页查看效果');
-    setShowHeroEditor(false);
+  const saveHeroText = async () => {
+    try {
+      const response = await fetch('/api/admin/hero-text', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ heroTitle, heroSubtitle }),
+      });
+      if (response.ok) {
+        setMessage('首页文案已更新，所有用户将看到新文案');
+        setShowHeroEditor(false);
+      } else {
+        setMessage('保存失败');
+      }
+    } catch (error) {
+      setMessage('保存失败');
+    }
     setTimeout(() => setMessage(''), 3000);
   };
 
@@ -452,7 +467,7 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
                   value={heroSubtitle}
                   onChange={(e) => setHeroSubtitle(e.target.value)}
                   className="w-full px-4 py-2.5 bg-[#FFFFFF] border border-[#0000000D] rounded-xl text-[#1D1D1F] text-[14px] focus:outline-none focus:ring-2 focus:ring-[#0071E3]/30 focus:border-[#0071E3]/50"
-                  placeholder="私募星工场全量业绩跟踪平台，实时监控多维度策略表现"
+                  placeholder="私募星工厂全量业绩跟踪平台，实时监控多维度策略表现"
                 />
               </div>
               <div className="flex gap-2 pt-2">
@@ -466,9 +481,7 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
                   onClick={() => {
                     setHeroTitle('');
                     setHeroSubtitle('');
-                    localStorage.removeItem('heroTitle');
-                    localStorage.removeItem('heroSubtitle');
-                    setMessage('已恢复默认文案');
+                    setMessage('已恢复默认文案（请保存生效）');
                     setTimeout(() => setMessage(''), 3000);
                   }}
                   className="px-6 py-2.5 bg-[#FFFFFF] border border-[#0000000D] text-[#86868B] rounded-xl hover:bg-[#00000006] transition-colors text-[14px]"
@@ -485,7 +498,7 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
               </div>
               <div>
                 <p className="text-[11px] text-[#86868B] mb-1">副标题</p>
-                <p className="text-[14px] text-[#86868B]">{heroSubtitle || '私募星工场全量业绩跟踪平台，实时监控多维度策略表现'}</p>
+                <p className="text-[14px] text-[#86868B]">{heroSubtitle || '私募星工厂全量业绩跟踪平台，实时监控多维度策略表现'}</p>
               </div>
             </div>
           )}

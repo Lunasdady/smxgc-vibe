@@ -93,7 +93,7 @@ export default function Navbar() {
                 <LogoIcon className="w-5 h-5" />
               </div>
               <span className="text-[15px] font-semibold text-[#1D1D1F] tracking-tight hidden sm:block" style={{ fontFamily: '-apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif' }}>
-                私募星工场
+                私募星工厂
               </span>
             </Link>
 

@@ -254,7 +254,7 @@ export default function HomePage() {
       <footer className="border-t border-[#0000000D] mt-20 py-8">
         <div className="max-w-[1200px] mx-auto px-6 lg:px-8">
           <div className="flex flex-col md:flex-row items-center justify-between gap-4 text-[12px] text-[#86868B]">
-            <p>© 2026 私募星工场 · 数据仅供参考，不构成投资建议</p>
+            <p>© 2026 私募星工厂 · 数据仅供参考，不构成投资建议</p>
             <div className="flex items-center gap-4">
               <a href="#" className="hover:text-[#1D1D1F] transition-colors">免责声明</a>
               <a href="#" className="hover:text-[#1D1D1F] transition-colors">隐私政策</a>

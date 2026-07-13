@@ -221,6 +221,14 @@ export default function HomePage() {
                               className="mt-3 flex items-center justify-between text-[12px] text-[#86868B] group-hover:text-[#0071E3] transition-colors cursor-pointer"
                               onClick={(e) => {
                                 e.stopPropagation();
+                                // 检查用户登录状态
+                                const hasToken = document.cookie.includes('user-token=');
+                                if (!hasToken) {
+                                  if (confirm('登录后可查看产品数据详情，是否前往登录？')) {
+                                    router.push(`/login?redirect=/strategy/${strategy.strategyType}`);
+                                  }
+                                  return;
+                                }
                                 router.push(`/strategy/${strategy.strategyType}`);
                               }}
                             >

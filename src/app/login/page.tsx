@@ -32,7 +32,7 @@ function LoginContent() {
 
   useEffect(() => {
     if (errorParam === 'no-permission') {
-      setError('您的账户暂无策略详情访问权限，请联系管理员审核');
+      setError('您的账户暂未开通策略访问权限，需等待管理员审核。审核通过后，系统将通过您的注册邮箱发送通知。');
     }
   }, [errorParam]);
 

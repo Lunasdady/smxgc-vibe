@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { extractDataDateFromFilename } from '@/lib/stats';
 import { STRATEGY_NAME_MAP } from '@/lib/types';
 import { useAppStore } from '@/lib/store';
@@ -413,12 +414,20 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
             </div>
             <h1 className="text-[17px] font-semibold text-[#1D1D1F]">数据管理后台</h1>
           </div>
-          <button
-            onClick={onLogout}
-            className="px-4 py-2 bg-[#FFFFFF] border border-[#0000000D] text-[#86868B] rounded-xl hover:bg-[#00000006] hover:text-[#1D1D1F] transition-colors text-[14px]"
-          >
-            退出登录
-          </button>
+          <div className="flex items-center gap-3">
+            <Link
+              href="/admin/permissions"
+              className="px-4 py-2 bg-[#FFFFFF] border border-[#0000000D] text-[#0071E3] rounded-xl hover:bg-[#0071E3]/5 transition-colors text-[14px] font-medium"
+            >
+              权限管理
+            </Link>
+            <button
+              onClick={onLogout}
+              className="px-4 py-2 bg-[#FFFFFF] border border-[#0000000D] text-[#86868B] rounded-xl hover:bg-[#00000006] hover:text-[#1D1D1F] transition-colors text-[14px]"
+            >
+              退出登录
+            </button>
+          </div>
         </div>
       </header>
 

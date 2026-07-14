@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Menu, X, ChevronDown } from 'lucide-react';
+import { Menu, X, ChevronDown, LogIn } from 'lucide-react';
 import { STRATEGY_GROUPS, STRATEGY_NAME_MAP, getFuturesStrategies } from '@/lib/types';
 import { useAppStore } from '@/lib/store';
 
@@ -48,11 +48,21 @@ export default function Navbar() {
   const [scrolled, setScrolled] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [strategyOpen, setStrategyOpen] = useState(false);
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
 
   useEffect(() => {
     const handleScroll = () => setScrolled(window.scrollY > 10);
     window.addEventListener('scroll', handleScroll, { passive: true });
     return () => window.removeEventListener('scroll', handleScroll);
+  }, []);
+
+  useEffect(() => {
+    const checkLogin = () => {
+      setIsLoggedIn(document.cookie.includes('user-token='));
+    };
+    checkLogin();
+    const interval = setInterval(checkLogin, 2000);
+    return () => clearInterval(interval);
   }, []);
 
   const isHome = pathname === '/';
@@ -150,6 +160,16 @@ export default function Navbar() {
 
             {/* Right actions */}
             <div className="flex items-center gap-3">
+              {/* Login/Register */}
+              {!isLoggedIn && pathname !== '/login' && pathname !== '/register' && (
+                <Link
+                  href="/login"
+                  className="hidden md:flex items-center gap-1.5 px-4 py-2 bg-[#0071E3] text-white rounded-full text-[13px] font-medium hover:bg-[#0077ED] transition-all"
+                >
+                  <LogIn className="w-3.5 h-3.5" />
+                  登录 / 注册
+                </Link>
+              )}
               {/* Mobile menu button */}
               <button
                 onClick={() => setMobileOpen(!mobileOpen)}
@@ -195,6 +215,11 @@ export default function Navbar() {
               <MobileNavLink href="/admin" active={pathname === '/admin'} onClick={() => setMobileOpen(false)}>
                 管理后台
               </MobileNavLink>
+              {!isLoggedIn && (
+                <MobileNavLink href="/login" active={pathname === '/login'} onClick={() => setMobileOpen(false)}>
+                  登录 / 注册
+                </MobileNavLink>
+              )}
             </div>
           </div>
         </div>

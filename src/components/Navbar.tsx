@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Menu, X, ChevronDown, LogIn } from 'lucide-react';
+import { Menu, X, ChevronDown, LogIn, User, LogOut } from 'lucide-react';
 import { STRATEGY_GROUPS, STRATEGY_NAME_MAP, getFuturesStrategies } from '@/lib/types';
 import { useAppStore } from '@/lib/store';
 
@@ -48,7 +48,8 @@ export default function Navbar() {
   const [scrolled, setScrolled] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [strategyOpen, setStrategyOpen] = useState(false);
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [user, setUser] = useState<{ realName: string; email: string } | null>(null);
+  const [userMenuOpen, setUserMenuOpen] = useState(false);
 
   useEffect(() => {
     const handleScroll = () => setScrolled(window.scrollY > 10);
@@ -57,13 +58,37 @@ export default function Navbar() {
   }, []);
 
   useEffect(() => {
-    const checkLogin = () => {
-      setIsLoggedIn(document.cookie.includes('user-token='));
+    const fetchUser = async () => {
+      const tokenMatch = document.cookie.match(/user-token=([^;]+)/);
+      if (!tokenMatch) {
+        setUser(null);
+        return;
+      }
+      try {
+        const res = await fetch('/api/auth/me', {
+          headers: { Authorization: `Bearer ${tokenMatch[1]}` },
+        });
+        if (res.ok) {
+          const data = await res.json();
+          setUser(data);
+        } else {
+          setUser(null);
+        }
+      } catch {
+        setUser(null);
+      }
     };
-    checkLogin();
-    const interval = setInterval(checkLogin, 2000);
+    fetchUser();
+    const interval = setInterval(fetchUser, 5000);
     return () => clearInterval(interval);
   }, []);
+
+  const handleLogout = () => {
+    document.cookie = 'user-token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT';
+    setUser(null);
+    setUserMenuOpen(false);
+    window.location.href = '/';
+  };
 
   const isHome = pathname === '/';
   const isStrategy = pathname?.startsWith('/strategy/');
@@ -159,16 +184,51 @@ export default function Navbar() {
             </nav>
 
             {/* Right actions */}
-            <div className="flex items-center gap-3">
-              {/* Login/Register */}
-              {!isLoggedIn && pathname !== '/login' && pathname !== '/register' && (
-                <Link
-                  href="/login"
-                  className="hidden md:flex items-center gap-1.5 px-4 py-2 bg-[#0071E3] text-white rounded-full text-[13px] font-medium hover:bg-[#0077ED] transition-all"
-                >
-                  <LogIn className="w-3.5 h-3.5" />
-                  登录 / 注册
-                </Link>
+            <div className="flex items-center gap-3 relative">
+              {/* User menu (desktop) */}
+              {user ? (
+                <div className="hidden md:block relative">
+                  <button
+                    onClick={() => setUserMenuOpen(!userMenuOpen)}
+                    className="flex items-center gap-2 px-3 py-2 rounded-full text-[13px] font-medium text-[#1D1D1F]/80 hover:bg-black/5 transition-all"
+                  >
+                    <div className="w-7 h-7 rounded-full bg-[#0071E3]/10 flex items-center justify-center">
+                      <User className="w-4 h-4 text-[#0071E3]" />
+                    </div>
+                    <span className="max-w-[80px] truncate">{user.realName}</span>
+                    <ChevronDown className={`w-3 h-3 transition-transform duration-200 ${userMenuOpen ? 'rotate-180' : ''}`} />
+                  </button>
+                  {userMenuOpen && (
+                    <>
+                      <div className="fixed inset-0 z-40" onClick={() => setUserMenuOpen(false)} />
+                      <div className="absolute right-0 top-full pt-2 z-50">
+                        <div className="glass-card rounded-2xl p-2 shadow-apple-lg w-44">
+                          <div className="px-3 py-2 border-b border-[#0000000D] mb-1">
+                            <p className="text-[13px] font-medium text-[#1D1D1F] truncate">{user.realName}</p>
+                            <p className="text-[11px] text-[#86868B] truncate">{user.email}</p>
+                          </div>
+                          <button
+                            onClick={handleLogout}
+                            className="w-full flex items-center gap-2 px-3 py-2.5 rounded-xl text-[13px] text-[#DC2626] hover:bg-[#DC2626]/5 transition-all"
+                          >
+                            <LogOut className="w-4 h-4" />
+                            退出登录
+                          </button>
+                        </div>
+                      </div>
+                    </>
+                  )}
+                </div>
+              ) : (
+                pathname !== '/login' && pathname !== '/register' && (
+                  <Link
+                    href="/login"
+                    className="hidden md:flex items-center gap-1.5 px-4 py-2 bg-[#0071E3] text-white rounded-full text-[13px] font-medium hover:bg-[#0077ED] transition-all"
+                  >
+                    <LogIn className="w-3.5 h-3.5" />
+                    登录 / 注册
+                  </Link>
+                )
               )}
               {/* Mobile menu button */}
               <button
@@ -215,7 +275,21 @@ export default function Navbar() {
               <MobileNavLink href="/admin" active={pathname === '/admin'} onClick={() => setMobileOpen(false)}>
                 管理后台
               </MobileNavLink>
-              {!isLoggedIn && (
+              {user ? (
+                <>
+                  <div className="px-3 py-2.5 rounded-xl bg-[#0071E3]/8">
+                    <p className="text-[13px] font-medium text-[#0071E3]">{user.realName}</p>
+                    <p className="text-[11px] text-[#86868B]">{user.email}</p>
+                  </div>
+                  <button
+                    onClick={() => { handleLogout(); setMobileOpen(false); }}
+                    className="w-full flex items-center gap-2 px-3 py-2.5 rounded-xl text-[15px] text-[#DC2626] hover:bg-[#DC2626]/5 transition-all text-left"
+                  >
+                    <LogOut className="w-4 h-4" />
+                    退出登录
+                  </button>
+                </>
+              ) : (
                 <MobileNavLink href="/login" active={pathname === '/login'} onClick={() => setMobileOpen(false)}>
                   登录 / 注册
                 </MobileNavLink>

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/db';
 import jwt from 'jsonwebtoken';
+import { sendApprovalEmail } from '@/lib/mail';
 
 export const dynamic = 'force-dynamic';
 
@@ -93,6 +94,20 @@ export async function POST(request: Request) {
         permissions: JSON.stringify(permissions || ['strategy-detail']),
       },
     });
+
+    // 发送审核通过通知邮件
+    const approvedUsers = await prisma.user.findMany({
+      where: { id: { in: userIds } },
+      select: { email: true, realName: true },
+    });
+
+    for (const user of approvedUsers) {
+      try {
+        await sendApprovalEmail(user.email, user.realName);
+      } catch (err) {
+        console.error(`Failed to send approval email to ${user.email}:`, err);
+      }
+    }
 
     return NextResponse.json({ success: true, message: 'Users approved' });
   } catch (error) {

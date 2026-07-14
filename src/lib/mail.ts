@@ -42,3 +42,43 @@ export async function sendVerificationEmail(to: string, code: string, type: 'reg
     html,
   });
 }
+
+export async function sendApprovalEmail(to: string, realName: string) {
+  const loginUrl = 'http://122.51.51.46/login';
+  const subject = '私募星工厂 - 您的账户已通过审核';
+  const text = `尊敬的 ${realName}，您好！\n\n您的私募星工厂账户已完成审核，策略详情访问权限已开通。\n\n您现在可以访问：\n- 首页概况数据\n- 各策略类型详情页（指增、CTA、套利、复合等）\n- 产品周度数据与分组汇总\n\n请使用注册时的邮箱和密码登录系统。\n登录地址：${loginUrl}\n\n如有任何问题，请联系管理员。\n感谢您对私募星工厂的支持！`;
+
+  const html = `<div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 480px; margin: 0 auto; padding: 32px; background: #f5f5f7; border-radius: 16px;">
+    <h2 style="color: #1d1d1f; margin-bottom: 16px; font-size: 20px;">审核通过通知</h2>
+    <p style="color: #86868b; font-size: 15px; line-height: 1.6; margin-bottom: 16px;">
+      尊敬的 <strong style="color: #1d1d1f;">${realName}</strong>，您好！
+    </p>
+    <p style="color: #86868b; font-size: 15px; line-height: 1.6; margin-bottom: 24px;">
+      您的私募星工厂账户已完成审核，<strong style="color: #16a34a;">策略详情访问权限已开通</strong>。
+    </p>
+    <div style="background: #fff; border-radius: 12px; padding: 20px; margin-bottom: 24px;">
+      <p style="color: #1d1d1f; font-size: 14px; font-weight: 600; margin-bottom: 12px;">您现在可以访问：</p>
+      <ul style="color: #86868b; font-size: 14px; line-height: 1.8; margin: 0; padding-left: 18px;">
+        <li>首页概况数据</li>
+        <li>各策略类型详情页（指增、CTA、套利、复合等）</li>
+        <li>产品周度数据与分组汇总</li>
+      </ul>
+    </div>
+    <p style="color: #86868b; font-size: 14px; line-height: 1.6; margin-bottom: 8px;">
+      请使用注册时的邮箱和密码登录系统：
+    </p>
+    <a href="${loginUrl}" style="display: inline-block; background: #0071e3; color: #fff; text-decoration: none; padding: 12px 32px; border-radius: 12px; font-size: 15px; font-weight: 500; margin-bottom: 24px;">立即登录</a>
+    <p style="color: #86868b; font-size: 13px; line-height: 1.6;">
+      如有任何问题，请联系管理员。<br>
+      感谢您对私募星工厂的支持！
+    </p>
+  </div>`;
+
+  await transporter.sendMail({
+    from: `"私募星工厂" <${process.env.SMTP_USER || 'smxgc_nav_sever@163.com'}>`,
+    to,
+    subject,
+    text,
+    html,
+  });
+}

@@ -4,7 +4,7 @@ import { Suspense } from 'react';
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Eye, EyeOff, ArrowLeft, LogOut } from 'lucide-react';
+import { Eye, EyeOff, ArrowLeft, LogOut, RefreshCw } from 'lucide-react';
 
 export default function LoginPage() {
   return (
@@ -30,6 +30,7 @@ function LoginContent() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [hasToken, setHasToken] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
 
   useEffect(() => {
     setHasToken(document.cookie.includes('user-token='));
@@ -38,7 +39,7 @@ function LoginContent() {
   useEffect(() => {
     if (errorParam === 'no-permission') {
       if (hasToken) {
-        setError('您的账户权限已更新，请重新登录以生效策略详情访问权限。');
+        setError('您的账户权限已更新，请点击下方按钮刷新权限或重新登录。');
       } else {
         setError('您的账户暂未开通策略访问权限，需等待管理员审核。审核通过后，系统将通过您的注册邮箱发送通知。');
       }
@@ -50,6 +51,33 @@ function LoginContent() {
     setHasToken(false);
     setError('');
     window.location.reload();
+  };
+
+  const handleRefreshPermission = async () => {
+    setRefreshing(true);
+    const tokenMatch = document.cookie.match(/user-token=([^;]+)/);
+    if (!tokenMatch) {
+      setError('登录已过期，请重新登录');
+      setRefreshing(false);
+      return;
+    }
+    try {
+      const res = await fetch('/api/auth/refresh', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${tokenMatch[1]}` },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        document.cookie = `user-token=${data.token}; path=/; max-age=${7 * 24 * 60 * 60}`;
+        window.location.href = redirect;
+      } else {
+        setError('刷新权限失败，请重新登录');
+      }
+    } catch {
+      setError('刷新权限失败，请重新登录');
+    } finally {
+      setRefreshing(false);
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -104,13 +132,23 @@ function LoginContent() {
             <div className={`mb-6 p-4 rounded-xl text-[13px] ${hasToken && errorParam === 'no-permission' ? 'bg-[#0071E3]/8 border border-[#0071E3]/20 text-[#0071E3]' : 'bg-red-50 border border-red-100 text-red-600'}`}>
               <p className="mb-2">{error}</p>
               {hasToken && errorParam === 'no-permission' && (
-                <button
-                  onClick={handleRelogin}
-                  className="inline-flex items-center gap-1.5 px-4 py-2 bg-[#0071E3] text-white rounded-lg text-[13px] font-medium hover:bg-[#0077ED] transition-all"
-                >
-                  <LogOut className="w-3.5 h-3.5" />
-                  退出并重新登录
-                </button>
+                <div className="flex flex-col gap-2">
+                  <button
+                    onClick={handleRefreshPermission}
+                    disabled={refreshing}
+                    className="inline-flex items-center justify-center gap-1.5 px-4 py-2 bg-[#16A34A] text-white rounded-lg text-[13px] font-medium hover:bg-[#15803d] transition-all disabled:opacity-50"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? 'animate-spin' : ''}`} />
+                    {refreshing ? '刷新中...' : '刷新权限'}
+                  </button>
+                  <button
+                    onClick={handleRelogin}
+                    className="inline-flex items-center justify-center gap-1.5 px-4 py-2 bg-[#0071E3] text-white rounded-lg text-[13px] font-medium hover:bg-[#0077ED] transition-all"
+                  >
+                    <LogOut className="w-3.5 h-3.5" />
+                    退出并重新登录
+                  </button>
+                </div>
               )}
             </div>
           )}

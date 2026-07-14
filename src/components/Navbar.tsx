@@ -71,6 +71,22 @@ export default function Navbar() {
         if (res.ok) {
           const data = await res.json();
           setUser(data);
+
+          // 如果权限已更新为 approved，自动刷新 token
+          if (data.status === 'approved' && data.permissions?.includes('strategy-detail')) {
+            try {
+              const refreshRes = await fetch('/api/auth/refresh', {
+                method: 'POST',
+                headers: { Authorization: `Bearer ${tokenMatch[1]}` },
+              });
+              if (refreshRes.ok) {
+                const refreshData = await refreshRes.json();
+                document.cookie = `user-token=${refreshData.token}; path=/; max-age=${7 * 24 * 60 * 60}`;
+              }
+            } catch (refreshErr) {
+              console.error('Auto refresh token failed:', refreshErr);
+            }
+          }
         } else {
           setUser(null);
         }
@@ -79,7 +95,7 @@ export default function Navbar() {
       }
     };
     fetchUser();
-    const interval = setInterval(fetchUser, 5000);
+    const interval = setInterval(fetchUser, 10000); // 每10秒检查一次
     return () => clearInterval(interval);
   }, []);
 

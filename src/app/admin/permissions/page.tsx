@@ -3,7 +3,8 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Search, CheckSquare, Square, ArrowLeft, Users, UserCheck, Shield } from 'lucide-react';
+import { Search, CheckSquare, Square, ArrowLeft, Users, UserCheck, Shield, ShieldOff } from 'lucide-react';
+import AdminTabs from '../_components/AdminTabs';
 
 type Tab = 'registered' | 'pending';
 
@@ -135,6 +136,47 @@ export default function PermissionsPage() {
     }
   };
 
+  const handleRevoke = async () => {
+    if (selectedIds.length === 0) return;
+
+    setApproving(true);
+    setMessage('');
+
+    try {
+      const token = localStorage.getItem('adminToken');
+      const response = await fetch('/api/admin/users', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          userIds: selectedIds,
+          action: 'revoke',
+        }),
+      });
+
+      if (response.ok) {
+        setMessage(`已取消 ${selectedIds.length} 位用户的权限`);
+        setSelectedIds([]);
+        // 刷新列表
+        const status = activeTab === 'pending' ? 'pending' : 'approved';
+        const url = `/api/admin/users?status=${status}${searchTerm ? `&search=${encodeURIComponent(searchTerm)}` : ''}`;
+        const refreshResponse = await fetch(url, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const data = await refreshResponse.json();
+        setUsers(data.users || []);
+      } else {
+        setMessage('取消权限失败，请稍后重试');
+      }
+    } catch {
+      setMessage('取消权限失败，请稍后重试');
+    } finally {
+      setApproving(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-[#F5F5F7] flex items-center justify-center">
@@ -161,20 +203,15 @@ export default function PermissionsPage() {
       <header className="bg-white border-b border-[#0000000D]">
         <div className="max-w-[1200px] mx-auto px-6 lg:px-8 h-14 flex items-center justify-between">
           <div className="flex items-center gap-4">
-            <Link
-              href="/admin"
-              className="inline-flex items-center gap-1.5 text-[14px] text-[#86868B] hover:text-[#0071E3] transition-colors"
-            >
-              <ArrowLeft className="w-4 h-4" />
-              返回数据管理
-            </Link>
-            <span className="text-[#0000000D]">|</span>
             <span className="text-[14px] font-medium text-[#1D1D1F]">权限管理</span>
           </div>
         </div>
       </header>
 
       <main className="max-w-[1200px] mx-auto px-6 lg:px-8 py-8">
+        <div className="flex justify-center mb-6">
+          <AdminTabs />
+        </div>
         {/* Tabs */}
         <div className="flex items-center gap-1 mb-6 bg-white rounded-2xl p-1 shadow-apple inline-flex">
           <button
@@ -234,6 +271,16 @@ export default function PermissionsPage() {
               {approving ? '确认中...' : `确认授权 (${selectedIds.length})`}
             </button>
           )}
+          {activeTab === 'registered' && selectedIds.length > 0 && (
+            <button
+              onClick={handleRevoke}
+              disabled={approving}
+              className="flex items-center gap-2 px-5 py-2.5 bg-[#DC2626] text-white rounded-xl text-[14px] font-medium hover:bg-[#B91C1C] active:scale-[0.98] transition-all disabled:opacity-50"
+            >
+              <ShieldOff className="w-4 h-4" />
+              {approving ? '取消中...' : `取消权限 (${selectedIds.length})`}
+            </button>
+          )}
         </div>
 
         {message && (
@@ -250,20 +297,18 @@ export default function PermissionsPage() {
             <table className="w-full">
               <thead className="bg-[#00000004]">
                 <tr>
-                  {activeTab === 'pending' && (
-                    <th className="px-5 py-3 text-left">
-                      <button
-                        onClick={toggleSelectAll}
-                        className="text-[#86868B] hover:text-[#0071E3] transition-colors"
-                      >
-                        {selectedIds.length === users.length && users.length > 0 ? (
-                          <CheckSquare className="w-4 h-4" />
-                        ) : (
-                          <Square className="w-4 h-4" />
-                        )}
-                      </button>
-                    </th>
-                  )}
+                  <th className="px-5 py-3 text-left">
+                    <button
+                      onClick={toggleSelectAll}
+                      className="text-[#86868B] hover:text-[#0071E3] transition-colors"
+                    >
+                      {selectedIds.length === users.length && users.length > 0 ? (
+                        <CheckSquare className="w-4 h-4" />
+                      ) : (
+                        <Square className="w-4 h-4" />
+                      )}
+                    </button>
+                  </th>
                   <th className="px-5 py-3 text-left text-[13px] font-medium text-[#86868B]">所在机构</th>
                   <th className="px-5 py-3 text-left text-[13px] font-medium text-[#86868B]">真实姓名</th>
                   <th className="px-5 py-3 text-left text-[13px] font-medium text-[#86868B]">电话号码</th>
@@ -280,20 +325,18 @@ export default function PermissionsPage() {
                     key={user.id}
                     className="border-b border-[#00000008] hover:bg-[#0071E3]/[0.02] transition-all"
                   >
-                    {activeTab === 'pending' && (
-                      <td className="px-5 py-3">
-                        <button
-                          onClick={() => toggleSelect(user.id)}
-                          className="text-[#86868B] hover:text-[#0071E3] transition-colors"
-                        >
-                          {selectedIds.includes(user.id) ? (
-                            <CheckSquare className="w-4 h-4 text-[#0071E3]" />
-                          ) : (
-                            <Square className="w-4 h-4" />
-                          )}
-                        </button>
-                      </td>
-                    )}
+                    <td className="px-5 py-3">
+                      <button
+                        onClick={() => toggleSelect(user.id)}
+                        className="text-[#86868B] hover:text-[#0071E3] transition-colors"
+                      >
+                        {selectedIds.includes(user.id) ? (
+                          <CheckSquare className="w-4 h-4 text-[#0071E3]" />
+                        ) : (
+                          <Square className="w-4 h-4" />
+                        )}
+                      </button>
+                    </td>
                     <td className="px-5 py-3 text-[14px] text-[#1D1D1F]">{user.organization}</td>
                     <td className="px-5 py-3 text-[14px] text-[#1D1D1F]">{user.realName}</td>
                     <td className="px-5 py-3 text-[14px] text-[#86868B]">{user.phone || '-'}</td>
@@ -314,7 +357,7 @@ export default function PermissionsPage() {
                 ))}
                 {users.length === 0 && (
                   <tr>
-                    <td colSpan={activeTab === 'pending' ? 7 : 7} className="px-5 py-12 text-center text-[#86868B] text-[14px]">
+                    <td colSpan={7} className="px-5 py-12 text-center text-[#86868B] text-[14px]">
                       暂无{activeTab === 'pending' ? '待审核' : '已注册'}用户
                     </td>
                   </tr>

@@ -7,6 +7,7 @@ import { extractDataDateFromFilename } from '@/lib/stats';
 import { STRATEGY_NAME_MAP } from '@/lib/types';
 import { useAppStore } from '@/lib/store';
 import dayjs from 'dayjs';
+import AdminTabs from './_components/AdminTabs';
 
 // 直接刷新全局日期列表
 const refreshGlobalDates = async () => {
@@ -412,15 +413,9 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
             <div className="w-8 h-8 rounded-lg bg-[#0071E3] flex items-center justify-center">
               <span className="text-white font-bold text-sm">管</span>
             </div>
-            <h1 className="text-[17px] font-semibold text-[#1D1D1F]">数据管理后台</h1>
+            <h1 className="text-[17px] font-semibold text-[#1D1D1F]">管理后台</h1>
           </div>
           <div className="flex items-center gap-3">
-            <Link
-              href="/admin/permissions"
-              className="px-4 py-2 bg-[#FFFFFF] border border-[#0000000D] text-[#0071E3] rounded-xl hover:bg-[#0071E3]/5 transition-colors text-[14px] font-medium"
-            >
-              权限管理
-            </Link>
             <button
               onClick={onLogout}
               className="px-4 py-2 bg-[#FFFFFF] border border-[#0000000D] text-[#86868B] rounded-xl hover:bg-[#00000006] hover:text-[#1D1D1F] transition-colors text-[14px]"
@@ -432,6 +427,9 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
       </header>
 
       <main className="max-w-7xl mx-auto p-6 space-y-6">
+        <div className="flex justify-center">
+          <AdminTabs />
+        </div>
         {message && (
           <div className={`p-4 rounded-xl border text-[14px] ${message.includes('成功') || message.includes('更新') ? 'bg-[#16A34A]/10 text-[#16A34A] border-[#16A34A]/20' : 'bg-[#DC2626]/10 text-[#DC2626] border-[#DC2626]/20'}`}>
             {message}

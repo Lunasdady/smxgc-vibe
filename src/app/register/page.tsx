@@ -5,6 +5,7 @@ import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { ArrowLeft, RefreshCw, Eye, EyeOff, CheckCircle, Mail, Building2, User, Phone, Lock, Shield } from 'lucide-react';
+import { useAccessLog } from '@/hooks/useAccessLog';
 
 type Step = 1 | 2 | 3 | 4;
 
@@ -21,6 +22,7 @@ export default function RegisterPage() {
 }
 
 function RegisterContent() {
+  useAccessLog('/register');
   const router = useRouter();
   const searchParams = useSearchParams();
   const redirect = searchParams.get('redirect') || '/';

@@ -73,3 +73,16 @@ model VerificationCode {
   expiresAt DateTime
   createdAt DateTime @default(now())
 }
+
+model AccessLog {
+  id        Int      @id @default(autoincrement())
+  userId    Int?     // 已登录用户ID（未登录为null）
+  page      String   // 访问页面路径
+  ip        String?  // IP地址
+  userAgent String?  // 浏览器UA
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([page, createdAt])
+  @@index([userId, createdAt])
+}

@@ -5,6 +5,7 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Eye, EyeOff, ArrowLeft, LogOut, RefreshCw } from 'lucide-react';
+import { useAccessLog } from '@/hooks/useAccessLog';
 
 export default function LoginPage() {
   return (
@@ -19,6 +20,7 @@ export default function LoginPage() {
 }
 
 function LoginContent() {
+  useAccessLog('/login');
   const router = useRouter();
   const searchParams = useSearchParams();
   const redirect = searchParams.get('redirect') || '/';
@@ -31,20 +33,46 @@ function LoginContent() {
   const [error, setError] = useState('');
   const [hasToken, setHasToken] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [userStatus, setUserStatus] = useState<string | null>(null);
 
   useEffect(() => {
-    setHasToken(document.cookie.includes('user-token='));
+    const checkToken = async () => {
+      const has = document.cookie.includes('user-token=');
+      setHasToken(has);
+      if (has) {
+        const tokenMatch = document.cookie.match(/user-token=([^;]+)/);
+        if (tokenMatch) {
+          try {
+            const res = await fetch('/api/auth/me', {
+              headers: { Authorization: `Bearer ${tokenMatch[1]}` },
+            });
+            if (res.ok) {
+              const data = await res.json();
+              setUserStatus(data.status);
+            }
+          } catch {
+            // ignore
+          }
+        }
+      }
+    };
+    checkToken();
   }, []);
 
   useEffect(() => {
     if (errorParam === 'no-permission') {
       if (hasToken) {
-        setError('您的账户权限已更新，请点击下方按钮刷新权限或重新登录。');
+        if (userStatus === 'approved') {
+          setError('您的账户权限已更新，请点击下方按钮刷新权限或重新登录。');
+        } else {
+          // pending 或 API 未返回时，默认显示等待审核
+          setError('您的账户暂未开通策略访问权限，需等待管理员审核。审核通过后，系统将通过您的注册邮箱发送通知。');
+        }
       } else {
         setError('您的账户暂未开通策略访问权限，需等待管理员审核。审核通过后，系统将通过您的注册邮箱发送通知。');
       }
     }
-  }, [errorParam, hasToken]);
+  }, [errorParam, hasToken, userStatus]);
 
   const handleRelogin = () => {
     document.cookie = 'user-token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT';
@@ -129,9 +157,9 @@ function LoginContent() {
           <p className="text-[14px] text-[#86868B] mb-8">登录后查看完整策略数据</p>
 
           {error && (
-            <div className={`mb-6 p-4 rounded-xl text-[13px] ${hasToken && errorParam === 'no-permission' ? 'bg-[#0071E3]/8 border border-[#0071E3]/20 text-[#0071E3]' : 'bg-red-50 border border-red-100 text-red-600'}`}>
+            <div className={`mb-6 p-4 rounded-xl text-[13px] ${hasToken && errorParam === 'no-permission' && userStatus === 'approved' ? 'bg-[#0071E3]/8 border border-[#0071E3]/20 text-[#0071E3]' : 'bg-red-50 border border-red-100 text-red-600'}`}>
               <p className="mb-2">{error}</p>
-              {hasToken && errorParam === 'no-permission' && (
+              {hasToken && errorParam === 'no-permission' && userStatus === 'approved' && (
                 <div className="flex flex-col gap-2">
                   <button
                     onClick={handleRefreshPermission}
@@ -149,6 +177,15 @@ function LoginContent() {
                     退出并重新登录
                   </button>
                 </div>
+              )}
+              {hasToken && errorParam === 'no-permission' && userStatus !== 'approved' && (
+                <button
+                  onClick={handleRelogin}
+                  className="inline-flex items-center justify-center gap-1.5 px-4 py-2 bg-[#0071E3] text-white rounded-lg text-[13px] font-medium hover:bg-[#0077ED] transition-all"
+                >
+                  <LogOut className="w-3.5 h-3.5" />
+                  退出并重新登录
+                </button>
               )}
             </div>
           )}

@@ -10,7 +10,9 @@ import MetricSelector from '@/components/MetricSelector';
 import Navbar from '@/components/Navbar';
 import { Search, ChevronLeft, ChevronRight, ArrowUpDown, Maximize2, Minimize2, X } from 'lucide-react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useScrollReveal } from '@/hooks/useScrollReveal';
+import { useAccessLog } from '@/hooks/useAccessLog';
 
 interface StrategyPageProps {
   params: {
@@ -19,6 +21,8 @@ interface StrategyPageProps {
 }
 
 export default function StrategyPage({ params }: StrategyPageProps) {
+  const router = useRouter();
+  useAccessLog(`/strategy/${params.type}`);
   const { dataDate, metric, initialize } = useAppStore();
   const [loading, setLoading] = useState(true);
   const [groupSummary, setGroupSummary] = useState<GroupSummary | null>(null);
@@ -92,6 +96,28 @@ export default function StrategyPage({ params }: StrategyPageProps) {
     }
   }, [initialize]);
 
+  // 即时权限检查：页面加载后立即验证数据库最新权限
+  useEffect(() => {
+    const checkPermission = async () => {
+      const tokenMatch = document.cookie.match(/user-token=([^;]+)/);
+      if (!tokenMatch) return;
+      try {
+        const res = await fetch('/api/auth/me', {
+          headers: { Authorization: `Bearer ${tokenMatch[1]}` },
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data.status !== 'approved' || !data.permissions?.includes('strategy-detail')) {
+            router.push('/login?error=no-permission');
+          }
+        }
+      } catch {
+        // ignore
+      }
+    };
+    checkPermission();
+  }, [router]);
+
   useEffect(() => {
     if (!dataDate) return;
     
@@ -108,6 +134,11 @@ export default function StrategyPage({ params }: StrategyPageProps) {
             signal: controller.signal
           }),
         ]);
+        // 权限被撤销时重定向
+        if (summaryRes.status === 403 || productsRes.status === 403) {
+          router.push('/login?error=no-permission');
+          return;
+        }
         const summaryData = await summaryRes.json();
         const productsData = await productsRes.json();
         setGroupSummary(summaryData);
@@ -143,6 +174,11 @@ export default function StrategyPage({ params }: StrategyPageProps) {
         fetch(`/api/strategies/${strategyType}/group-summary?dataDate=${dataDate}&metric=${metricToFetch}`),
         fetch(`/api/strategies/${strategyType}/products?dataDate=${dataDate}&page=1&limit=1000`),
       ]);
+      // 权限被撤销时重定向
+      if (summaryRes.status === 403 || productsRes.status === 403) {
+        router.push('/login?error=no-permission');
+        return;
+      }
       const summaryData = await summaryRes.json();
       const productsData = await productsRes.json();
       setGroupSummary(summaryData);

@@ -11,9 +11,11 @@ import Navbar from '@/components/Navbar';
 import MetricSelector from '@/components/MetricSelector';
 import { useScrollReveal } from '@/hooks/useScrollReveal';
 import { useCountUp } from '@/hooks/useCountUp';
+import { useAccessLog } from '@/hooks/useAccessLog';
 import { TrendingUp, BarChart3, ArrowDown, ChevronRight } from 'lucide-react';
 
 export default function HomePage() {
+  useAccessLog('/');
   const router = useRouter();
   const { dataDate, metric, initialize, heroTitle, heroSubtitle } = useAppStore();
   const [strategies, setStrategies] = useState<StrategyOverview[]>([]);

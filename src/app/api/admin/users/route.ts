@@ -72,7 +72,7 @@ export async function GET(request: Request) {
   }
 }
 
-// 批量审核通过并分配权限
+// 批量审核通过/取消权限
 export async function POST(request: Request) {
   try {
     const admin = verifyAdmin(request);
@@ -80,13 +80,26 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { userIds, permissions } = await request.json();
+    const { userIds, permissions, action } = await request.json();
 
     if (!Array.isArray(userIds) || userIds.length === 0) {
       return NextResponse.json({ error: 'Invalid userIds' }, { status: 400 });
     }
 
-    // 更新用户权限和状态
+    if (action === 'revoke') {
+      // 取消权限
+      await prisma.user.updateMany({
+        where: { id: { in: userIds } },
+        data: {
+          status: 'pending',
+          permissions: JSON.stringify([]),
+        },
+      });
+
+      return NextResponse.json({ success: true, message: 'Users revoked' });
+    }
+
+    // 默认：授权
     await prisma.user.updateMany({
       where: { id: { in: userIds } },
       data: {

@@ -48,7 +48,7 @@ export default function Navbar() {
   const [scrolled, setScrolled] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [strategyOpen, setStrategyOpen] = useState(false);
-  const [user, setUser] = useState<{ realName: string; email: string } | null>(null);
+  const [user, setUser] = useState<{ realName: string; email: string; status: string; permissions: string[] } | null>(null);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
 
   useEffect(() => {
@@ -222,6 +222,15 @@ export default function Navbar() {
                           <div className="px-3 py-2 border-b border-[#0000000D] mb-1">
                             <p className="text-[13px] font-medium text-[#1D1D1F] truncate">{user.realName}</p>
                             <p className="text-[11px] text-[#86868B] truncate">{user.email}</p>
+                            <div className="mt-1.5">
+                              <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium ${
+                                user.status === 'approved' && user.permissions?.includes('strategy-detail')
+                                  ? 'bg-green-50 text-green-700'
+                                  : 'bg-amber-50 text-amber-700'
+                              }`}>
+                                {user.status === 'approved' && user.permissions?.includes('strategy-detail') ? '已授权' : '暂未授权'}
+                              </span>
+                            </div>
                           </div>
                           <button
                             onClick={handleLogout}

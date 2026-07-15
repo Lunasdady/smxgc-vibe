@@ -4,10 +4,12 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { ArrowLeft, Eye, EyeOff, CheckCircle } from 'lucide-react';
+import { useAccessLog } from '@/hooks/useAccessLog';
 
 type Step = 1 | 2 | 3;
 
 export default function ForgotPasswordPage() {
+  useAccessLog('/forgot-password');
   const router = useRouter();
 
   const [step, setStep] = useState<Step>(1);

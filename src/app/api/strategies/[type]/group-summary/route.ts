@@ -3,12 +3,19 @@ import prisma from '@/lib/db';
 import { calculateFiveNumberStats } from '@/lib/stats';
 import { FUTURES_CUTOFF_DATE, OLD_FUTURES_STRATEGIES, NEW_CTA_STRATEGIES } from '@/lib/types';
 import dayjs from 'dayjs';
+import { verifyRequestAuth, hasPermission } from '@/lib/auth';
 
 export async function GET(
   request: Request,
   { params }: { params: { type: string } }
 ) {
   try {
+    // 校验策略访问权限（查询数据库最新权限）
+    const auth = await verifyRequestAuth(request);
+    if (!hasPermission(auth, 'strategy-detail')) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+
     const { searchParams } = new URL(request.url);
     let dataDate = searchParams.get('dataDate');
     const metric = searchParams.get('metric') || 'weeklyReturn';

@@ -53,11 +53,16 @@ export async function GET(request: Request) {
       take: 10,
     });
 
-    // 获取用户详细信息
+    // 获取用户详细信息(排除被拒绝的用户)
     const data = [];
     for (const stat of userAccessStats) {
       const user = await prisma.user.findUnique({
-        where: { id: stat.userId! },
+        where: { 
+          id: stat.userId!,
+          status: {
+            not: 'rejected',
+          },
+        },
         select: {
           realName: true,
           email: true,

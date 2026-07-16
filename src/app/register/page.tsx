@@ -152,6 +152,10 @@ function RegisterContent() {
       setError('请填写所在机构');
       return false;
     }
+    if (!department.trim()) {
+      setError('请填写部门岗位');
+      return false;
+    }
     if (!realName.trim()) {
       setError('请填写真实姓名');
       return false;
@@ -386,7 +390,7 @@ function RegisterContent() {
                   type="text"
                   value={department}
                   onChange={(e) => setDepartment(e.target.value)}
-                  placeholder="请填写部门岗位（选填）"
+                  placeholder="请填写部门岗位"
                   className="w-full px-4 py-3 bg-[#F5F5F7] border border-transparent rounded-xl text-[14px] text-[#1D1D1F] placeholder-[#A1A1A6] focus:outline-none focus:ring-2 focus:ring-[#0071E3]/30 focus:bg-white transition-all"
                 />
               </div>

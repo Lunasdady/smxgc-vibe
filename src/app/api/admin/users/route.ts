@@ -42,6 +42,7 @@ export async function GET(request: Request) {
         { email: { contains: search } },
         { realName: { contains: search } },
         { organization: { contains: search } },
+        { department: { contains: search } },
       ];
     }
 
@@ -54,6 +55,7 @@ export async function GET(request: Request) {
         phone: true,
         realName: true,
         organization: true,
+        department: true,
         permissions: true,
         status: true,
         createdAt: true,

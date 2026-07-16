@@ -14,6 +14,7 @@ interface UserItem {
   phone: string | null;
   realName: string;
   organization: string;
+  department: string | null;
   permissions: string[];
   status: string;
   createdAt: string;
@@ -310,6 +311,7 @@ export default function PermissionsPage() {
                     </button>
                   </th>
                   <th className="px-5 py-3 text-left text-[13px] font-medium text-[#86868B]">所在机构</th>
+                  <th className="px-5 py-3 text-left text-[13px] font-medium text-[#86868B]">部门岗位</th>
                   <th className="px-5 py-3 text-left text-[13px] font-medium text-[#86868B]">真实姓名</th>
                   <th className="px-5 py-3 text-left text-[13px] font-medium text-[#86868B]">电话号码</th>
                   <th className="px-5 py-3 text-left text-[13px] font-medium text-[#86868B]">注册邮箱</th>
@@ -338,6 +340,7 @@ export default function PermissionsPage() {
                       </button>
                     </td>
                     <td className="px-5 py-3 text-[14px] text-[#1D1D1F]">{user.organization}</td>
+                    <td className="px-5 py-3 text-[14px] text-[#86868B]">{user.department || '-'}</td>
                     <td className="px-5 py-3 text-[14px] text-[#1D1D1F]">{user.realName}</td>
                     <td className="px-5 py-3 text-[14px] text-[#86868B]">{user.phone || '-'}</td>
                     <td className="px-5 py-3 text-[14px] text-[#86868B]">{user.email}</td>
@@ -357,7 +360,7 @@ export default function PermissionsPage() {
                 ))}
                 {users.length === 0 && (
                   <tr>
-                    <td colSpan={7} className="px-5 py-12 text-center text-[#86868B] text-[14px]">
+                    <td colSpan={8} className="px-5 py-12 text-center text-[#86868B] text-[14px]">
                       暂无{activeTab === 'pending' ? '待审核' : '已注册'}用户
                     </td>
                   </tr>

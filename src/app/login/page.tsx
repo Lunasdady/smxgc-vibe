@@ -123,7 +123,7 @@ function LoginContent() {
       const data = await response.json();
 
       if (!response.ok) {
-        setError(data.error === 'User not found' ? '用户不存在' : '密码错误');
+        setError(data.error === 'User not found' ? '该用户未注册' : '密码错误');
         return;
       }
 

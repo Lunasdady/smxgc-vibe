@@ -22,18 +22,13 @@ export async function POST(request: Request) {
       },
     });
 
-    if (!user) {
+    if (!user || user.status === 'rejected') {
       return NextResponse.json({ error: 'User not found' }, { status: 404 });
     }
 
     const isValid = await bcrypt.compare(password, user.password);
     if (!isValid) {
       return NextResponse.json({ error: 'Invalid password' }, { status: 401 });
-    }
-
-    // 拒绝授权的用户无法登录
-    if (user.status === 'rejected') {
-      return NextResponse.json({ error: 'Account rejected' }, { status: 403 });
     }
 
     // 生成JWT Token，7天有效期

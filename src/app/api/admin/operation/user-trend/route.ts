@@ -34,12 +34,15 @@ export async function GET(request: Request) {
     const startDate = dayjs().subtract(validDays - 1, 'day').startOf('day').toDate();
     const endDate = dayjs().endOf('day').toDate();
 
-    // 查询日期范围内的所有新注册用户
+    // 查询日期范围内的所有新注册用户(排除被拒绝的用户)
     const users = await prisma.user.findMany({
       where: {
         createdAt: {
           gte: startDate,
           lte: endDate,
+        },
+        status: {
+          not: 'rejected',
         },
       },
       select: {

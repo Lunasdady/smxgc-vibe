@@ -30,15 +30,24 @@ export async function GET(request: Request) {
     const today = dayjs().startOf('day').toDate();
     const tomorrow = dayjs().endOf('day').toDate();
 
-    // 总注册用户数
-    const totalUsers = await prisma.user.count();
+    // 总注册用户数(排除被拒绝的用户)
+    const totalUsers = await prisma.user.count({
+      where: {
+        status: {
+          not: 'rejected',
+        },
+      },
+    });
 
-    // 今日新增注册
+    // 今日新增注册(排除被拒绝的用户)
     const todayNewUsers = await prisma.user.count({
       where: {
         createdAt: {
           gte: today,
           lt: tomorrow,
+        },
+        status: {
+          not: 'rejected',
         },
       },
     });

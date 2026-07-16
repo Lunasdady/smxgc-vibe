@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Search, CheckSquare, Square, ArrowLeft, Users, UserCheck, Shield, ShieldOff } from 'lucide-react';
+import { Search, CheckSquare, Square, ArrowLeft, Users, UserCheck, Shield, ShieldOff, Ban } from 'lucide-react';
 import AdminTabs from '../_components/AdminTabs';
 
 type Tab = 'registered' | 'pending';
@@ -178,6 +178,50 @@ export default function PermissionsPage() {
     }
   };
 
+  const handleReject = async () => {
+    if (selectedIds.length === 0) return;
+
+    if (!confirm(`确定要拒绝授权 ${selectedIds.length} 位用户吗？拒绝后用户将无法登录，需要重新注册。`)) {
+      return;
+    }
+
+    setApproving(true);
+    setMessage('');
+
+    try {
+      const token = localStorage.getItem('adminToken');
+      const response = await fetch('/api/admin/users', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          userIds: selectedIds,
+          action: 'reject',
+        }),
+      });
+
+      if (response.ok) {
+        setMessage(`已拒绝 ${selectedIds.length} 位用户的授权申请`);
+        setSelectedIds([]);
+        // 刷新列表
+        const url = `/api/admin/users?status=pending${searchTerm ? `&search=${encodeURIComponent(searchTerm)}` : ''}`;
+        const refreshResponse = await fetch(url, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const data = await refreshResponse.json();
+        setUsers(data.users || []);
+      } else {
+        setMessage('拒绝授权失败，请稍后重试');
+      }
+    } catch {
+      setMessage('拒绝授权失败，请稍后重试');
+    } finally {
+      setApproving(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-[#F5F5F7] flex items-center justify-center">
@@ -263,14 +307,24 @@ export default function PermissionsPage() {
           </div>
 
           {activeTab === 'pending' && selectedIds.length > 0 && (
-            <button
-              onClick={handleApprove}
-              disabled={approving}
-              className="flex items-center gap-2 px-5 py-2.5 bg-[#0071E3] text-white rounded-xl text-[14px] font-medium hover:bg-[#0077ED] active:scale-[0.98] transition-all disabled:opacity-50"
-            >
-              <Shield className="w-4 h-4" />
-              {approving ? '确认中...' : `确认授权 (${selectedIds.length})`}
-            </button>
+            <div className="flex items-center gap-3">
+              <button
+                onClick={handleReject}
+                disabled={approving}
+                className="flex items-center gap-2 px-5 py-2.5 bg-[#DC2626] text-white rounded-xl text-[14px] font-medium hover:bg-[#B91C1C] active:scale-[0.98] transition-all disabled:opacity-50"
+              >
+                <Ban className="w-4 h-4" />
+                {approving ? '拒绝中...' : `拒绝授权 (${selectedIds.length})`}
+              </button>
+              <button
+                onClick={handleApprove}
+                disabled={approving}
+                className="flex items-center gap-2 px-5 py-2.5 bg-[#0071E3] text-white rounded-xl text-[14px] font-medium hover:bg-[#0077ED] active:scale-[0.98] transition-all disabled:opacity-50"
+              >
+                <Shield className="w-4 h-4" />
+                {approving ? '确认中...' : `确认授权 (${selectedIds.length})`}
+              </button>
+            </div>
           )}
           {activeTab === 'registered' && selectedIds.length > 0 && (
             <button

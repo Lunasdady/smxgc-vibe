@@ -101,6 +101,19 @@ export async function POST(request: Request) {
       return NextResponse.json({ success: true, message: 'Users revoked' });
     }
 
+    if (action === 'reject') {
+      // 拒绝授权
+      await prisma.user.updateMany({
+        where: { id: { in: userIds } },
+        data: {
+          status: 'rejected',
+          permissions: JSON.stringify([]),
+        },
+      });
+
+      return NextResponse.json({ success: true, message: 'Users rejected' });
+    }
+
     // 默认：授权
     await prisma.user.updateMany({
       where: { id: { in: userIds } },

@@ -31,6 +31,11 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Invalid password' }, { status: 401 });
     }
 
+    // 拒绝授权的用户无法登录
+    if (user.status === 'rejected') {
+      return NextResponse.json({ error: 'Account rejected' }, { status: 403 });
+    }
+
     // 生成JWT Token，7天有效期
     const token = jwt.sign(
       {

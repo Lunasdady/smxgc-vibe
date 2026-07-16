@@ -45,6 +45,7 @@ function RegisterContent() {
   const [organization, setOrganization] = useState('');
   const [realName, setRealName] = useState('');
   const [department, setDepartment] = useState('');
+  const [phone, setPhone] = useState('');
 
   // Step 4: 密码设置
   const [password, setPassword] = useState('');

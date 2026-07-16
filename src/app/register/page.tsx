@@ -4,7 +4,7 @@ import { Suspense } from 'react';
 import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { ArrowLeft, RefreshCw, Eye, EyeOff, CheckCircle, Mail, Building2, User, Phone, Lock, Shield } from 'lucide-react';
+import { ArrowLeft, RefreshCw, Eye, EyeOff, CheckCircle, Mail, Building2, User, Phone, Lock, Shield, Briefcase } from 'lucide-react';
 import { useAccessLog } from '@/hooks/useAccessLog';
 
 type Step = 1 | 2 | 3 | 4;
@@ -44,7 +44,7 @@ function RegisterContent() {
   // Step 3: 机构认证
   const [organization, setOrganization] = useState('');
   const [realName, setRealName] = useState('');
-  const [phone, setPhone] = useState('');
+  const [department, setDepartment] = useState('');
 
   // Step 4: 密码设置
   const [password, setPassword] = useState('');
@@ -211,6 +211,7 @@ function RegisterContent() {
           phone,
           realName,
           organization,
+          department,
           password,
         }),
       });
@@ -371,6 +372,20 @@ function RegisterContent() {
                   value={organization}
                   onChange={(e) => setOrganization(e.target.value)}
                   placeholder="请填写完整机构名称"
+                  className="w-full px-4 py-3 bg-[#F5F5F7] border border-transparent rounded-xl text-[14px] text-[#1D1D1F] placeholder-[#A1A1A6] focus:outline-none focus:ring-2 focus:ring-[#0071E3]/30 focus:bg-white transition-all"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[13px] font-medium text-[#1D1D1F] mb-2">
+                  <Briefcase className="w-3.5 h-3.5 inline mr-1" />
+                  部门岗位
+                </label>
+                <input
+                  type="text"
+                  value={department}
+                  onChange={(e) => setDepartment(e.target.value)}
+                  placeholder="请填写部门岗位（选填）"
                   className="w-full px-4 py-3 bg-[#F5F5F7] border border-transparent rounded-xl text-[14px] text-[#1D1D1F] placeholder-[#A1A1A6] focus:outline-none focus:ring-2 focus:ring-[#0071E3]/30 focus:bg-white transition-all"
                 />
               </div>

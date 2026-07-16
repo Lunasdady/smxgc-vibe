@@ -6,7 +6,7 @@ export const dynamic = 'force-dynamic';
 
 export async function POST(request: Request) {
   try {
-    const { email, phone, realName, organization, password } = await request.json();
+    const { email, phone, realName, organization, department, password } = await request.json();
 
     if (!email || !realName || !organization || !password) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
@@ -36,6 +36,7 @@ export async function POST(request: Request) {
         phone: phone || null,
         realName,
         organization,
+        department: department || null,
         password: hashedPassword,
         permissions: '[]',
         status: 'pending',

@@ -43,6 +43,7 @@ export async function GET(request: Request) {
         { realName: { contains: search } },
         { organization: { contains: search } },
         { department: { contains: search } },
+        { position: { contains: search } },
       ];
     }
 
@@ -56,6 +57,7 @@ export async function GET(request: Request) {
         realName: true,
         organization: true,
         department: true,
+        position: true,
         permissions: true,
         status: true,
         createdAt: true,

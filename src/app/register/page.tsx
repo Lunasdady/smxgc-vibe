@@ -45,6 +45,7 @@ function RegisterContent() {
   const [organization, setOrganization] = useState('');
   const [realName, setRealName] = useState('');
   const [department, setDepartment] = useState('');
+  const [position, setPosition] = useState('');
   const [phone, setPhone] = useState('');
 
   // Step 4: 密码设置
@@ -153,7 +154,11 @@ function RegisterContent() {
       return false;
     }
     if (!department.trim()) {
-      setError('请填写部门岗位');
+      setError('请填写所在部门');
+      return false;
+    }
+    if (!position.trim()) {
+      setError('请填写所在岗位');
       return false;
     }
     if (!realName.trim()) {
@@ -217,6 +222,7 @@ function RegisterContent() {
           realName,
           organization,
           department,
+          position,
           password,
         }),
       });
@@ -384,13 +390,27 @@ function RegisterContent() {
               <div>
                 <label className="block text-[13px] font-medium text-[#1D1D1F] mb-2">
                   <Briefcase className="w-3.5 h-3.5 inline mr-1" />
-                  部门岗位
+                  所在部门
                 </label>
                 <input
                   type="text"
                   value={department}
                   onChange={(e) => setDepartment(e.target.value)}
-                  placeholder="请填写部门岗位"
+                  placeholder="请填写所在部门"
+                  className="w-full px-4 py-3 bg-[#F5F5F7] border border-transparent rounded-xl text-[14px] text-[#1D1D1F] placeholder-[#A1A1A6] focus:outline-none focus:ring-2 focus:ring-[#0071E3]/30 focus:bg-white transition-all"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[13px] font-medium text-[#1D1D1F] mb-2">
+                  <Briefcase className="w-3.5 h-3.5 inline mr-1" />
+                  所在岗位
+                </label>
+                <input
+                  type="text"
+                  value={position}
+                  onChange={(e) => setPosition(e.target.value)}
+                  placeholder="请填写所在岗位"
                   className="w-full px-4 py-3 bg-[#F5F5F7] border border-transparent rounded-xl text-[14px] text-[#1D1D1F] placeholder-[#A1A1A6] focus:outline-none focus:ring-2 focus:ring-[#0071E3]/30 focus:bg-white transition-all"
                 />
               </div>

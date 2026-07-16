@@ -70,6 +70,15 @@ export default function Navbar() {
         });
         if (res.ok) {
           const data = await res.json();
+
+          // 如果被拒绝授权，自动退出登录
+          if (data.status === 'rejected') {
+            document.cookie = 'user-token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT';
+            setUser(null);
+            window.location.reload();
+            return;
+          }
+
           setUser(data);
 
           // 如果权限已更新为 approved，自动刷新 token

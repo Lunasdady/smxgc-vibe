@@ -20,7 +20,7 @@ export async function GET(request: Request) {
       where: { id: decoded.userId },
     });
 
-    if (!user) {
+    if (!user || user.status === 'rejected') {
       return NextResponse.json({ error: 'User not found' }, { status: 404 });
     }
 

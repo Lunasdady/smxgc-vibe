@@ -20,10 +20,15 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Password must contain both letters and numbers' }, { status: 400 });
     }
 
-    // 检查邮箱是否已注册
+    // 检查邮箱是否已注册（被拒绝的可以重新注册）
     const existingUser = await prisma.user.findUnique({ where: { email } });
-    if (existingUser) {
+    if (existingUser && existingUser.status !== 'rejected') {
       return NextResponse.json({ error: 'Email already registered' }, { status: 409 });
+    }
+
+    // 如果被拒绝，删除旧记录
+    if (existingUser && existingUser.status === 'rejected') {
+      await prisma.user.delete({ where: { id: existingUser.id } });
     }
 
     // 哈希密码

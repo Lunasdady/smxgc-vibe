@@ -21,10 +21,10 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Invalid email format' }, { status: 400 });
     }
 
-    // 如果是注册，检查邮箱是否已存在
+    // 如果是注册，检查邮箱是否已存在（被拒绝的可以重新注册）
     if (type === 'register') {
       const existingUser = await prisma.user.findUnique({ where: { email } });
-      if (existingUser) {
+      if (existingUser && existingUser.status !== 'rejected') {
         return NextResponse.json({ error: 'Email already registered' }, { status: 409 });
       }
     }

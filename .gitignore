@@ -4,3 +4,7 @@ node_modules/
 .DS_Store
 dist/
 build/
+
+# 数据库文件(禁止提交,防止覆盖生产数据)
+prisma/*.db
+*.db

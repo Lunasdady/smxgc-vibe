@@ -3,7 +3,8 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Search, CheckSquare, Square, ArrowLeft, Users, UserCheck, Shield, ShieldOff, Ban } from 'lucide-react';
+import { Search, CheckSquare, Square, ArrowLeft, Users, UserCheck, Shield, ShieldOff, Ban, Download } from 'lucide-react';
+import * as XLSX from 'xlsx';
 import AdminTabs from '../_components/AdminTabs';
 
 type Tab = 'registered' | 'pending';
@@ -223,6 +224,49 @@ export default function PermissionsPage() {
     }
   };
 
+  const handleExportUsers = () => {
+    if (users.length === 0) {
+      setMessage('没有可导出的用户数据');
+      setTimeout(() => setMessage(''), 3000);
+      return;
+    }
+
+    // 准备导出数据
+    const exportData = users.map(user => ({
+      '姓名': user.realName,
+      '邮箱': user.email,
+      '电话': user.phone || '-',
+      '所在机构': user.organization,
+      '所在部门': user.department || '-',
+      '所在岗位': user.position || '-',
+      '权限状态': user.permissions.includes('strategy-detail') ? '已授权' : '无权限',
+      '注册日期': new Date(user.createdAt).toLocaleString('zh-CN'),
+    }));
+
+    // 创建工作表
+    const worksheet = XLSX.utils.json_to_sheet(exportData);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, '用户列表');
+
+    // 设置列宽
+    worksheet['!cols'] = [
+      { wch: 12 },  // 姓名
+      { wch: 30 },  // 邮箱
+      { wch: 15 },  // 电话
+      { wch: 20 },  // 所在机构
+      { wch: 15 },  // 所在部门
+      { wch: 15 },  // 所在岗位
+      { wch: 12 },  // 权限状态
+      { wch: 20 },  // 注册日期
+    ];
+
+    // 导出文件
+    const fileName = `用户列表_${activeTab === 'pending' ? '待审核' : '已注册'}_${new Date().toISOString().slice(0, 10)}.xlsx`;
+    XLSX.writeFile(workbook, fileName);
+    setMessage(`成功导出 ${users.length} 条用户数据`);
+    setTimeout(() => setMessage(''), 3000);
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-[#F5F5F7] flex items-center justify-center">
@@ -328,13 +372,31 @@ export default function PermissionsPage() {
             </div>
           )}
           {activeTab === 'registered' && selectedIds.length > 0 && (
+            <div className="flex items-center gap-3">
+              <button
+                onClick={handleExportUsers}
+                className="flex items-center gap-2 px-5 py-2.5 bg-[#16A34A] text-white rounded-xl text-[14px] font-medium hover:bg-[#15803D] active:scale-[0.98] transition-all"
+              >
+                <Download className="w-4 h-4" />
+                导出Excel ({users.length})
+              </button>
+              <button
+                onClick={handleRevoke}
+                disabled={approving}
+                className="flex items-center gap-2 px-5 py-2.5 bg-[#DC2626] text-white rounded-xl text-[14px] font-medium hover:bg-[#B91C1C] active:scale-[0.98] transition-all disabled:opacity-50"
+              >
+                <ShieldOff className="w-4 h-4" />
+                {approving ? '取消中...' : `取消权限 (${selectedIds.length})`}
+              </button>
+            </div>
+          )}
+          {activeTab === 'registered' && selectedIds.length === 0 && users.length > 0 && (
             <button
-              onClick={handleRevoke}
-              disabled={approving}
-              className="flex items-center gap-2 px-5 py-2.5 bg-[#DC2626] text-white rounded-xl text-[14px] font-medium hover:bg-[#B91C1C] active:scale-[0.98] transition-all disabled:opacity-50"
+              onClick={handleExportUsers}
+              className="flex items-center gap-2 px-5 py-2.5 bg-[#16A34A] text-white rounded-xl text-[14px] font-medium hover:bg-[#15803D] active:scale-[0.98] transition-all"
             >
-              <ShieldOff className="w-4 h-4" />
-              {approving ? '取消中...' : `取消权限 (${selectedIds.length})`}
+              <Download className="w-4 h-4" />
+              导出Excel ({users.length})
             </button>
           )}
         </div>

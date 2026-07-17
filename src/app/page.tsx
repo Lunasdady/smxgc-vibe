@@ -3,7 +3,7 @@
 import { useEffect, useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAppStore } from '@/lib/store';
-import { StrategyOverview, STRATEGY_GROUPS, STRATEGY_NAME_MAP, getMetricFields, getFuturesStrategies } from '@/lib/types';
+import { StrategyOverview, STRATEGY_GROUPS, STRATEGY_NAME_MAP, getMetricFields, getFuturesStrategies, getNonIndexEnhancedMetricLabel } from '@/lib/types';
 import DateSelector from '@/components/DateSelector';
 import BoxPlot from '@/components/BoxPlot';
 import WeeklyDetailTable from '@/components/WeeklyDetailTable';
@@ -165,6 +165,16 @@ export default function HomePage() {
           </div>
         </div>
 
+        {/* 指标说明提示 */}
+        <div className="flex items-start gap-2 mb-6 px-3 py-2.5 bg-[#F5F5F7]/50 rounded-xl border border-[#00000008]">
+          <svg className="w-4 h-4 text-[#86868B] mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+            <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+          </svg>
+          <p className="text-[12px] text-[#86868B] leading-relaxed">
+            实际展示指标以箱型图浮窗标签为准，指增策略显示超额收益，其他策略显示绝对收益
+          </p>
+        </div>
+
         {/* Strategy Grid */}
         {loading ? (
           <div className="flex items-center justify-center py-32">
@@ -205,6 +215,11 @@ export default function HomePage() {
                         const strategyMetricFields = getMetricFields(dataDate, strategy.strategyType);
                         const strategyCurrentMetric = strategyMetricFields.find(m => m.key === metric) || strategyMetricFields[0];
                         
+                        // 非指增策略需要映射指标名称
+                        const indexEnhancedTypes = ['index-enhanced-300', 'index-enhanced-500', 'index-enhanced-1000', 'index-enhanced-2000', 'index-enhanced-alternative'];
+                        const isIndexEnhanced = indexEnhancedTypes.includes(strategy.strategyType);
+                        const displayMetricLabel = isIndexEnhanced ? strategyCurrentMetric.label : getNonIndexEnhancedMetricLabel(metric);
+                        
                         return (
                           <div
                             key={strategy.strategyType}
@@ -215,7 +230,7 @@ export default function HomePage() {
                               strategy={strategy}
                               groupName={hasSubmenu ? group.name : undefined}
                               metric={metric}
-                              metricName={strategyCurrentMetric.label}
+                              metricName={displayMetricLabel}
                               isPercentage={strategyCurrentMetric.isPercentage}
                               onClick={() => setSelectedStrategy(strategy.strategyType)}
                             />

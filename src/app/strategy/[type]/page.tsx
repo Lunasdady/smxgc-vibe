@@ -760,9 +760,9 @@ function BoxPlotTooltip({
         </div>
         <div className="space-y-2">
           <TooltipRow label="最大值" value={stats.max} isPercentage={isPercentage} />
-          <TooltipRow label="75分位" value={stats.q75} isPercentage={isPercentage} />
+          <TooltipRow label="25分位" value={stats.q75} isPercentage={isPercentage} />
           <TooltipRow label="平均数" value={stats.mean} isMean isPercentage={isPercentage} />
-          <TooltipRow label="25分位" value={stats.q25} isPercentage={isPercentage} />
+          <TooltipRow label="75分位" value={stats.q25} isPercentage={isPercentage} />
           <TooltipRow label="最小值" value={stats.min} isPercentage={isPercentage} />
         </div>
       </div>

@@ -186,6 +186,21 @@ export function getMetricFields(dataDate: string | null, strategyType: string | 
   return METRIC_FIELDS_OLD;
 }
 
+// 非指增策略的指标名称映射（将指增新指标映射为对应的绝对收益指标）
+export function getNonIndexEnhancedMetricLabel(metricKey: string): string {
+  const mapping: Record<string, string> = {
+    'excessReturn1w': '近一周收益',
+    'excessReturn3m': '近一月收益',
+    'excessReturnYtd': '今年以来收益',
+    'excessAnnualizedReturn': '成立以来年化收益',
+    'excessYtdMaxDrawdown': '今年以来最大回撤',
+    'excessInceptionMaxDrawdown': '成立以来最大回撤',
+    'excessAnnualizedVolatility': '成立以来年化波动率',
+    'excessSharpeRatio': '成立以来夏普比率',
+  };
+  return mapping[metricKey] || '近一周收益';
+}
+
 // 兼容旧代码的默认导出（使用旧字段）
 export const METRIC_FIELDS = METRIC_FIELDS_OLD;
 

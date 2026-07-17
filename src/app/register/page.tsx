@@ -47,6 +47,7 @@ function RegisterContent() {
   const [department, setDepartment] = useState('');
   const [position, setPosition] = useState('');
   const [phone, setPhone] = useState('');
+  const [referrer, setReferrer] = useState('');
 
   // Step 4: 密码设置
   const [password, setPassword] = useState('');
@@ -174,6 +175,10 @@ function RegisterContent() {
       setError('请输入有效的手机号码');
       return false;
     }
+    if (!referrer.trim()) {
+      setError('请填写推荐人');
+      return false;
+    }
     return true;
   };
 
@@ -223,6 +228,7 @@ function RegisterContent() {
           organization,
           department,
           position,
+          referrer,
           password,
         }),
       });
@@ -439,6 +445,20 @@ function RegisterContent() {
                   value={phone}
                   onChange={(e) => setPhone(e.target.value)}
                   placeholder="请输入手机号码"
+                  className="w-full px-4 py-3 bg-[#F5F5F7] border border-transparent rounded-xl text-[14px] text-[#1D1D1F] placeholder-[#A1A1A6] focus:outline-none focus:ring-2 focus:ring-[#0071E3]/30 focus:bg-white transition-all"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[13px] font-medium text-[#1D1D1F] mb-2">
+                  <User className="w-3.5 h-3.5 inline mr-1" />
+                  推荐人
+                </label>
+                <input
+                  type="text"
+                  value={referrer}
+                  onChange={(e) => setReferrer(e.target.value)}
+                  placeholder="如无推荐人，请填写&ldquo;无&rdquo;"
                   className="w-full px-4 py-3 bg-[#F5F5F7] border border-transparent rounded-xl text-[14px] text-[#1D1D1F] placeholder-[#A1A1A6] focus:outline-none focus:ring-2 focus:ring-[#0071E3]/30 focus:bg-white transition-all"
                 />
               </div>

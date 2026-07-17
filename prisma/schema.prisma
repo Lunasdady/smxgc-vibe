@@ -60,6 +60,7 @@ model User {
   organization String
   department   String?
   position     String?
+  referrer     String?  // 推荐人
   password     String   // bcrypt hash
   permissions  String   @default("[]") // JSON数组，如 ["strategy-detail"]
   status       String   @default("pending") // pending / approved / rejected

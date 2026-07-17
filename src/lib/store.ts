@@ -7,6 +7,8 @@ interface AppState {
   availableDates: string[];
   // 当前选中的指标字段
   metric: string;
+  // 是否正在初始化
+  initializing: boolean;
   // 首页顶部文案
   heroTitle: string;
   heroSubtitle: string;
@@ -27,6 +29,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   dataDate: null,
   availableDates: [],
   metric: 'weeklyReturn',
+  initializing: true,
   heroTitle: typeof window !== 'undefined' ? (localStorage.getItem('heroTitle') || '穿越周期的<span className="text-[#0071E3]">价值投资</span>') : '穿越周期的<span className="text-[#0071E3]">价值投资</span>',
   heroSubtitle: typeof window !== 'undefined' ? (localStorage.getItem('heroSubtitle') || '私募星工厂全量业绩跟踪平台，实时监控多维度策略表现') : '私募星工厂全量业绩跟踪平台，实时监控多维度策略表现',
   setDataDate: (date) => set({ dataDate: date }),
@@ -52,8 +55,11 @@ export const useAppStore = create<AppState>((set, get) => ({
 
         set({
           dataDate: dateData.date,
-          metric: shouldUseNewMetric ? 'excessReturn1w' : 'weeklyReturn'
+          metric: shouldUseNewMetric ? 'excessReturn1w' : 'weeklyReturn',
+          initializing: false
         });
+      } else {
+        set({ initializing: false });
       }
 
       // 获取所有可用日期
@@ -72,6 +78,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       }
     } catch (error) {
       console.error('Failed to initialize app store:', error);
+      set({ initializing: false });
     }
   },
 }));

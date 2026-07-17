@@ -17,7 +17,7 @@ import { TrendingUp, BarChart3, ArrowDown, ChevronRight } from 'lucide-react';
 export default function HomePage() {
   useAccessLog('/');
   const router = useRouter();
-  const { dataDate, metric, initialize, heroTitle, heroSubtitle } = useAppStore();
+  const { dataDate, metric, initialize, initializing, heroTitle, heroSubtitle } = useAppStore();
   const [strategies, setStrategies] = useState<StrategyOverview[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedStrategy, setSelectedStrategy] = useState<string | null>(null);
@@ -47,7 +47,8 @@ export default function HomePage() {
   }, [initialize]);
 
   useEffect(() => {
-    if (!dataDate || !metric) return;
+    // 等待初始化完成后再加载数据
+    if (!dataDate || !metric || initializing) return;
     
     const controller = new AbortController();
     
@@ -72,7 +73,7 @@ export default function HomePage() {
     fetchData();
     
     return () => controller.abort();
-  }, [dataDate, metric]);
+  }, [dataDate, metric, initializing]);
 
   // Build a map for quick lookup
   const strategyMap = new Map(strategies.map((s) => [s.strategyType, s]));

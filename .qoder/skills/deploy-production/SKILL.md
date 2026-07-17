@@ -37,6 +37,32 @@ description: 自动化部署Next.js应用到生产环境或测试环境,包含Ng
 
 ## 完整部署流程
 
+### ⚠️ 第0步: 数据库备份(关键!)
+
+**在拉取代码前,必须先备份数据库!**
+
+```bash
+# 生产环境
+cd /var/www/my-app
+timestamp=$(date +%Y%m%d_%H%M%S)
+cp prisma/dev.db "prisma/dev.db.backup.${timestamp}"
+ls -lh prisma/dev.db.backup.*
+
+# 测试环境
+cd /var/www/my-app-test
+timestamp=$(date +%Y%m%d_%H%M%S)
+cp prisma/dev.db "prisma/dev.db.backup.${timestamp}"
+ls -lh prisma/dev.db.backup.*
+```
+
+**验证备份成功**:
+- 备份文件大小应与原数据库相近(不应为0)
+- 保留最近3次备份,清理旧备份:
+```bash
+# 只保留最新3个备份
+ls -t prisma/dev.db.backup.* | tail -n +4 | xargs rm -f
+```
+
 ### 第1步: 连接服务器并进入目录
 
 ```bash
@@ -69,9 +95,46 @@ sudo systemctl restart nginx
 git pull origin master  # 生产环境
 # 或
 git pull origin develop  # 测试环境
+
+# 关键: 确认拉取成功且是最新版本
+git log --oneline -1
 ```
 
-### 第4步: 检查.env文件
+**验证**: 对比本地`git log`和服务器的commit hash,必须一致!
+
+### 第4步: 验证数据库文件安全
+
+**关键检查: 确保git pull不会删除数据库!**
+
+```bash
+# 检查.gitignore是否包含数据库文件
+cat .gitignore | grep -E "\*\.db|dev\.db"
+
+# 如果dev.db被Git追踪(危险!),必须先恢复
+if git ls-files --error-unmatch prisma/dev.db 2>/dev/null; then
+  echo "⚠️ 警告: dev.db被Git追踪!"
+  echo "立即执行: git rm --cached prisma/dev.db"
+  echo "并添加到.gitignore: echo 'prisma/*.db' >> .gitignore"
+fi
+
+# 确认数据库文件存在
+ls -lh prisma/dev.db
+```
+
+**如果数据库文件不存在**:
+```bash
+# 从最新备份恢复
+latest_backup=$(ls -t prisma/dev.db.backup.* | head -1)
+if [ -f "$latest_backup" ]; then
+  cp "$latest_backup" prisma/dev.db
+  echo "已从备份恢复: $latest_backup"
+else
+  echo "❌ 错误: 没有备份文件,无法恢复数据库!"
+  exit 1
+fi
+```
+
+### 第5步: 检查.env文件
 
 ```bash
 # 验证.env文件存在
@@ -80,21 +143,21 @@ ls -la .env
 # 如果不存在,必须创建(见下方.env模板)
 ```
 
-### 第5步: 同步数据库
+### 第6步: 同步数据库
 
 ```bash
 npx prisma db push
 npx prisma generate
 ```
 
-### 第6步: 清理并构建
+### 第7步: 清理并构建
 
 ```bash
 rm -rf .next
 npm run build
 ```
 
-### 第7步: 复制必要文件到standalone
+### 第8步: 复制必要文件到standalone
 
 ```bash
 # 复制静态资源
@@ -108,7 +171,7 @@ mkdir -p .next/standalone/.next/server/pages
 cp -r .next/server/pages/* .next/standalone/.next/server/pages/ 2>/dev/null || true
 ```
 
-### 第8步: 重启服务
+### 第9步: 重启服务
 
 ```bash
 # 生产环境
@@ -121,7 +184,20 @@ PORT=7371 pm2 restart smxgc-vibe-test
 pm2 save
 ```
 
-### 第9步: 等待并验证
+### 第9步: 验证代码版本(关键!)
+
+```bash
+# 确认部署的是最新代码
+git log --oneline -1
+
+# 对比本地开发环境的commit hash
+cd /var/www/my-app
+git log --oneline -1
+```
+
+**必须**: 生产环境的commit hash与本地`git log origin/master -1`一致!
+
+### 第10步: 等待并验证
 
 ```bash
 sleep 5
@@ -136,7 +212,40 @@ pm2 list
 curl -s http://localhost:3002/api/admin/status | python3 -m json.tool
 ```
 
-### 第10步: 验证浏览器缓存已清除(关键!)
+### 第12步: 验证数据完整性(关键!)
+
+**防止数据丢失的最后防线!**
+
+```bash
+# 检查用户数据
+echo "=== 用户数据 ==="
+sqlite3 prisma/dev.db "SELECT COUNT(*) as user_count FROM User;"
+sqlite3 prisma/dev.db "SELECT id, email, realName, status FROM User LIMIT 5;"
+
+# 检查业务数据
+echo "=== 业务数据 ==="
+sqlite3 prisma/dev.db "SELECT COUNT(*) as product_count FROM FundProduct;"
+sqlite3 prisma/dev.db "SELECT MAX(dataDate) as latest_date FROM FundProduct;"
+
+# 与备份对比(可选)
+if [ -f "$latest_backup" ]; then
+  echo "=== 备份数据对比 ==="
+  echo "备份用户数:"
+  sqlite3 "$latest_backup" "SELECT COUNT(*) FROM User;"
+  echo "备份产品数:"
+  sqlite3 "$latest_backup" "SELECT COUNT(*) FROM FundProduct;"
+fi
+```
+
+**如果数据量异常减少**:
+```bash
+echo "⚠️ 警告: 数据量异常,立即从备份恢复!"
+cp "$latest_backup" prisma/dev.db
+pm2 restart smxgc-vibe
+exit 1
+```
+
+### 第13步: 验证浏览器缓存已清除(关键!)
 
 **这是之前部署失败的主要原因!**
 
@@ -217,14 +326,19 @@ bash scripts/deploy.sh test
 
 ## 部署后验证清单
 
-部署完成后,必须执行以下验证:
+部署完成后,**必须逐项勾选**:
 
-- [ ] HTTP状态码返回200
-- [ ] PM2进程状态为online
-- [ ] API正常返回数据
-- [ ] 浏览器F12确认加载的是新版本JS
-- [ ] 核心功能测试通过(登录、数据展示)
-- [ ] Nginx错误日志无异常: `tail -n 20 /var/log/nginx/error.log`
+- [ ] **HTTP状态码返回200**
+- [ ] **PM2进程状态为online**
+- [ ] **API正常返回数据**
+- [ ] **代码版本正确**: `git log --oneline -1` 与本地一致
+- [ ] **数据库文件存在**: `ls -lh prisma/dev.db`
+- [ ] **用户数据完整**: `sqlite3 prisma/dev.db "SELECT COUNT(*) FROM User;"`
+- [ ] **业务数据完整**: `sqlite3 prisma/dev.db "SELECT COUNT(*) FROM FundProduct;"`
+- [ ] **备份文件已创建**: `ls -lh prisma/dev.db.backup.*`
+- [ ] **浏览器F12确认加载的是新版本JS**
+- [ ] **核心功能测试通过**(登录、数据展示)
+- [ ] **Nginx错误日志无异常**: `tail -n 20 /var/log/nginx/error.log`
 
 ## 回滚方案
 
@@ -256,3 +370,8 @@ PORT=3002 pm2 restart smxgc-vibe
 3. **浏览器缓存是最大陷阱** - 部署后必须用F12验证资源版本
 4. **.env文件不会自动创建** - Git不追踪,必须手动创建
 5. **数据库必须同步** - schema变更后立即执行db push
+6. **代码版本必须验证** - 部署后检查git log,确认是最新commit
+7. **SQLite数据库禁止提交Git** - .gitignore必须包含*.db,防止部署时覆盖数据
+8. **部署前必须备份数据库** - 每次部署前先cp备份,带时间戳
+9. **部署后验证数据完整性** - 对比备份前后数据量,异常立即恢复
+10. **Git追踪数据库是致命错误** - dev.db被标记为deleted时,git pull会直接删除文件

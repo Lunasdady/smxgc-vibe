@@ -96,7 +96,7 @@ function LoginContent() {
       });
       if (res.ok) {
         const data = await res.json();
-        document.cookie = `user-token=${data.token}; path=/; max-age=${7 * 24 * 60 * 60}`;
+        document.cookie = `user-token=${data.token}; path=/; max-age=${7 * 24 * 60 * 60}; SameSite=Strict`;
         window.location.href = redirect;
       } else {
         setError('刷新权限失败，请重新登录');
@@ -127,8 +127,8 @@ function LoginContent() {
         return;
       }
 
-      // 设置 cookie
-      document.cookie = `user-token=${data.token}; path=/; max-age=${7 * 24 * 60 * 60}`;
+      // 设置 cookie (添加SameSite=Strict防止跨站共享)
+      document.cookie = `user-token=${data.token}; path=/; max-age=${7 * 24 * 60 * 60}; SameSite=Strict`;
 
       // 跳转
       router.push(redirect);

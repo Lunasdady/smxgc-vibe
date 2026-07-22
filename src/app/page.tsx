@@ -48,7 +48,13 @@ export default function HomePage() {
 
   useEffect(() => {
     // 等待初始化完成后再加载数据
-    if (!dataDate || !metric || initializing) return;
+    console.log('[Home] 检查数据加载条件:', { dataDate, metric, initializing });
+    if (!dataDate || !metric || initializing) {
+      console.log('[Home] 条件不满足,等待中...');
+      return;
+    }
+    
+    console.log('[Home] 开始加载数据:', { dataDate, metric });
     
     const controller = new AbortController();
     
@@ -60,10 +66,11 @@ export default function HomePage() {
           { signal: controller.signal }
         );
         const data = await response.json();
+        console.log('[Home] 数据加载成功:', { count: data.strategies?.length || 0 });
         setStrategies(data.strategies || []);
       } catch (error: any) {
         if (error.name !== 'AbortError') {
-          console.error('Failed to fetch strategy overview:', error);
+          console.error('[Home] 数据加载失败:', error);
         }
       } finally {
         setLoading(false);

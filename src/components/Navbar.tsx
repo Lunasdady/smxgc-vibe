@@ -90,7 +90,7 @@ export default function Navbar() {
               });
               if (refreshRes.ok) {
                 const refreshData = await refreshRes.json();
-                document.cookie = `user-token=${refreshData.token}; path=/; max-age=${7 * 24 * 60 * 60}`;
+                document.cookie = `user-token=${refreshData.token}; path=/; max-age=${7 * 24 * 60 * 60}; SameSite=Strict`;
               }
             } catch (refreshErr) {
               console.error('Auto refresh token failed:', refreshErr);

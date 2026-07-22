@@ -39,6 +39,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   setHeroSubtitle: (subtitle) => set({ heroSubtitle: subtitle }),
   initialize: async () => {
     try {
+      console.log('[Store] 开始初始化...');
+      
       // 并行获取最新日期和首页文案
       const [dateResponse, heroResponse] = await Promise.all([
         fetch('/api/data/latest-date'),
@@ -48,10 +50,17 @@ export const useAppStore = create<AppState>((set, get) => ({
       const dateData = await dateResponse.json();
       const heroData = await heroResponse.json();
 
+      console.log('[Store] API返回数据:', { dateData, heroData });
+
       if (dateData.date) {
         const cutoffDate = new Date('2026-07-08');
         const dataDateObj = new Date(dateData.date);
         const shouldUseNewMetric = dataDateObj >= cutoffDate;
+
+        console.log('[Store] 设置日期和指标:', { 
+          date: dateData.date, 
+          metric: shouldUseNewMetric ? 'excessReturn1w' : 'weeklyReturn' 
+        });
 
         set({
           dataDate: dateData.date,
@@ -59,6 +68,7 @@ export const useAppStore = create<AppState>((set, get) => ({
           initializing: false
         });
       } else {
+        console.warn('[Store] 未获取到日期数据,设置initializing=false');
         set({ initializing: false });
       }
 
@@ -76,8 +86,10 @@ export const useAppStore = create<AppState>((set, get) => ({
       if (heroData.heroSubtitle) {
         set({ heroSubtitle: heroData.heroSubtitle });
       }
+
+      console.log('[Store] 初始化完成');
     } catch (error) {
-      console.error('Failed to initialize app store:', error);
+      console.error('[Store] 初始化失败:', error);
       set({ initializing: false });
     }
   },

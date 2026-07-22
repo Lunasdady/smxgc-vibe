@@ -2,6 +2,9 @@ import { NextResponse } from 'next/server';
 import prisma from '@/lib/db';
 import dayjs from 'dayjs';
 
+// 强制动态渲染，不使用静态缓存
+export const dynamic = 'force-dynamic';
+
 export async function GET() {
   try {
     // 获取最新的数据日期

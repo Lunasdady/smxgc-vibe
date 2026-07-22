@@ -4,6 +4,9 @@ import { calculateFiveNumberStats } from '@/lib/stats';
 import { STRATEGY_NAME_MAP, getFuturesStrategies } from '@/lib/types';
 import dayjs from 'dayjs';
 
+// 强制动态渲染，不使用静态缓存
+export const dynamic = 'force-dynamic';
+
 // 新字段到旧字段的映射（非指增策略在日期>=2026-07-08时回退使用）
 const NEW_TO_OLD_METRIC_MAP: Record<string, string> = {
   excessReturn1w: 'weeklyReturn',

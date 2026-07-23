@@ -1,7 +1,7 @@
 import { FiveNumberStats } from './types';
 
 /**
- * 计算五数统计（最小值、Q25、均值、Q75、最大值）
+ * 计算五数统计（最小值、Q25、中位数、Q75、最大值）
  */
 export function calculateFiveNumberStats(
   values: number[]
@@ -11,7 +11,7 @@ export function calculateFiveNumberStats(
       count: 0,
       min: null,
       q25: null,
-      mean: null,
+      median: null,
       q75: null,
       max: null,
     };
@@ -25,7 +25,7 @@ export function calculateFiveNumberStats(
       count: 0,
       min: null,
       q25: null,
-      mean: null,
+      median: null,
       q75: null,
       max: null,
     };
@@ -43,14 +43,14 @@ export function calculateFiveNumberStats(
   const q25 = percentile(sorted, 25);
   const q75 = percentile(sorted, 75);
 
-  // 计算均值
-  const mean = sorted.reduce((sum, val) => sum + val, 0) / count;
+  // 计算中位数（Q2/50分位）
+  const median = percentile(sorted, 50);
 
   return {
     count,
     min,
     q25,
-    mean,
+    median,
     q75,
     max,
   };

@@ -209,7 +209,7 @@ export interface FiveNumberStats {
   count: number;
   min: number | null;
   q25: number | null;
-  mean: number | null;
+  median: number | null;
   q75: number | null;
   max: number | null;
 }
@@ -221,7 +221,7 @@ export interface StrategyOverview {
   count: number;
   min: number | null;
   q25: number | null;
-  mean: number | null;
+  median: number | null;
   q75: number | null;
   max: number | null;
 }

@@ -89,7 +89,7 @@ export default function HomePage() {
   const totalProducts = strategies.reduce((sum, s) => sum + s.count, 0);
   const activeStrategies = strategies.filter((s) => s.count > 0).length;
   const avgReturn = strategies.length > 0
-    ? strategies.reduce((sum, s) => sum + (s.mean || 0), 0) / strategies.length
+    ? strategies.reduce((sum, s) => sum + (s.median || 0), 0) / strategies.length
     : 0;
 
   // Scroll reveal refs

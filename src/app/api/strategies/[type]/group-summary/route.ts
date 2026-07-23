@@ -32,8 +32,8 @@ export async function GET(
 
     if (!dataDate) {
       return NextResponse.json({
-        largeScale: { count: 0, min: null, q25: null, mean: null, q75: null, max: null },
-        smallScale: { count: 0, min: null, q25: null, mean: null, q75: null, max: null },
+        largeScale: { count: 0, min: null, q25: null, median: null, q75: null, max: null },
+        smallScale: { count: 0, min: null, q25: null, median: null, q75: null, max: null },
       });
     }
 
@@ -49,8 +49,8 @@ export async function GET(
       else if (strategyType === 'composite-cta') {
         // 复合CTA在旧数据中不存在，返回空
         return NextResponse.json({
-          largeScale: { count: 0, min: null, q25: null, mean: null, q75: null, max: null },
-          smallScale: { count: 0, min: null, q25: null, mean: null, q75: null, max: null },
+          largeScale: { count: 0, min: null, q25: null, median: null, q75: null, max: null },
+          smallScale: { count: 0, min: null, q25: null, median: null, q75: null, max: null },
         });
       }
     }

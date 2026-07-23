@@ -32,7 +32,7 @@ export default function BoxPlot({ strategy, onClick, groupName, metric, metricNa
     setIsTouchDevice('ontouchstart' in window || navigator.maxTouchPoints > 0);
   }, []);
 
-  const { strategyType, strategyName, count, min, q25, mean, q75, max } = strategy;
+  const { strategyType, strategyName, count, min, q25, median, q75, max } = strategy;
 
   if (count === 0) {
     return (
@@ -61,7 +61,7 @@ export default function BoxPlot({ strategy, onClick, groupName, metric, metricNa
 
   const xMin = mapX(dataMin);
   const xQ25 = mapX(q25);
-  const xMean = mapX(mean);
+  const xMedian = mapX(median);
   const xQ75 = mapX(q75);
   const xMax = mapX(dataMax);
 
@@ -225,10 +225,10 @@ export default function BoxPlot({ strategy, onClick, groupName, metric, metricNa
           </>
         )}
 
-        {/* Mean dot */}
-        {xMean !== null && (
+        {/* Median dot */}
+        {xMedian !== null && (
           <circle
-            cx={xMean}
+            cx={xMedian}
             cy={yCenter}
             r="4"
             fill="#FFFFFF"
@@ -248,7 +248,7 @@ export default function BoxPlot({ strategy, onClick, groupName, metric, metricNa
           metricName={metricName}
           min={min}
           q25={q25}
-          mean={mean}
+          median={median}
           q75={q75}
           max={max}
           clientX={tooltip.clientX}
@@ -266,7 +266,7 @@ function BoxPlotTooltip({
   metricName,
   min,
   q25,
-  mean,
+  median,
   q75,
   max,
   clientX,
@@ -277,7 +277,7 @@ function BoxPlotTooltip({
   metricName?: string;
   min: number | null;
   q25: number | null;
-  mean: number | null;
+  median: number | null;
   q75: number | null;
   max: number | null;
   clientX: number;
@@ -316,7 +316,7 @@ function BoxPlotTooltip({
         <div className="space-y-2">
           <TooltipRow label="最大值" value={max} isPercentage={isPercentage} />
           <TooltipRow label="25分位" value={q75} isPercentage={isPercentage} />
-          <TooltipRow label="平均数" value={mean} isMean isPercentage={isPercentage} />
+          <TooltipRow label="中位数" value={median} isMean isPercentage={isPercentage} />
           <TooltipRow label="75分位" value={q25} isPercentage={isPercentage} />
           <TooltipRow label="最小值" value={min} isPercentage={isPercentage} />
         </div>

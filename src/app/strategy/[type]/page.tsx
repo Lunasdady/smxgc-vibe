@@ -582,7 +582,7 @@ function BoxPlotCard({ title, stats, metricName, isPercentage = true }: { title:
 
   const xMin = mapX(dataMin);
   const xQ25 = mapX(stats.q25);
-  const xMean = mapX(stats.mean);
+  const xMedian = mapX(stats.median);
   const xQ75 = mapX(stats.q75);
   const xMax = mapX(dataMax);
 
@@ -690,8 +690,8 @@ function BoxPlotCard({ title, stats, metricName, isPercentage = true }: { title:
               strokeWidth="1.5"
             />
           )}
-          {xMean !== null && (
-            <circle cx={xMean} cy={yCenter} r="4" fill="#FFFFFF" stroke="#0071E3" strokeWidth="2" />
+          {xMedian !== null && (
+            <circle cx={xMedian} cy={yCenter} r="4" fill="#FFFFFF" stroke="#0071E3" strokeWidth="2" />
           )}
         </svg>
         
@@ -761,7 +761,7 @@ function BoxPlotTooltip({
         <div className="space-y-2">
           <TooltipRow label="最大值" value={stats.max} isPercentage={isPercentage} />
           <TooltipRow label="25分位" value={stats.q75} isPercentage={isPercentage} />
-          <TooltipRow label="平均数" value={stats.mean} isMean isPercentage={isPercentage} />
+          <TooltipRow label="中位数" value={stats.median} isMean isPercentage={isPercentage} />
           <TooltipRow label="75分位" value={stats.q25} isPercentage={isPercentage} />
           <TooltipRow label="最小值" value={stats.min} isPercentage={isPercentage} />
         </div>

@@ -547,12 +547,6 @@ function renderMobileCell(product: FundProduct, field: keyof FundProduct): React
 // Box Plot Card for group summary
 function BoxPlotCard({ title, stats, metricName, isPercentage = true }: { title: string; stats: any; metricName?: string; isPercentage?: boolean }) {
   const svgRef = useRef<SVGSVGElement>(null);
-  const [tooltip, setTooltip] = useState<{ clientX: number; clientY: number; visible: boolean }>({ clientX: 0, clientY: 0, visible: false });
-  const [isTouchDevice, setIsTouchDevice] = useState(false);
-
-  useEffect(() => {
-    setIsTouchDevice('ontouchstart' in window || navigator.maxTouchPoints > 0);
-  }, []);
 
   if (!stats || stats.count === 0) {
     return (
@@ -586,48 +580,6 @@ function BoxPlotCard({ title, stats, metricName, isPercentage = true }: { title:
   const xQ75 = mapX(stats.q75);
   const xMax = mapX(dataMax);
 
-  const handleMouseMove = (e: React.MouseEvent<SVGSVGElement>) => {
-    if (isTouchDevice) return;
-    setTooltip({
-      clientX: e.clientX,
-      clientY: e.clientY,
-      visible: true,
-    });
-  };
-
-  const handleMouseLeave = () => {
-    if (isTouchDevice) return;
-    setTooltip({ clientX: 0, clientY: 0, visible: false });
-  };
-
-  // Touch events for mobile - show on touch, hide on release
-  const handleTouchStart = (e: React.TouchEvent<SVGSVGElement>) => {
-    if (!isTouchDevice) return;
-    e.stopPropagation();
-    const touch = e.touches[0];
-    setTooltip({
-      clientX: touch.clientX,
-      clientY: touch.clientY,
-      visible: true,
-    });
-  };
-
-  const handleTouchEnd = (e: React.TouchEvent<SVGSVGElement>) => {
-    if (!isTouchDevice) return;
-    e.stopPropagation();
-    setTooltip({ clientX: 0, clientY: 0, visible: false });
-  };
-
-  const handleTouchMove = (e: React.TouchEvent<SVGSVGElement>) => {
-    if (!isTouchDevice) return;
-    const touch = e.touches[0];
-    setTooltip({
-      clientX: touch.clientX,
-      clientY: touch.clientY,
-      visible: true,
-    });
-  };
-
   return (
     <div className="glass-card rounded-3xl p-6 glass-card-hover relative">
       <div className="flex items-center justify-between mb-4">
@@ -637,6 +589,35 @@ function BoxPlotCard({ title, stats, metricName, isPercentage = true }: { title:
         </h3>
         <span className="text-[13px] text-[#86868B] font-medium px-2.5 py-0.5 rounded-full bg-[#00000006]">{stats.count} 只</span>
       </div>
+
+      {/* Statistics Labels */}
+      <div className="flex justify-between mb-1 text-[11px] text-[#86868B]">
+        <span>最小值</span>
+        <span>75分位</span>
+        <span>中位数</span>
+        <span>25分位</span>
+        <span>最大值</span>
+      </div>
+
+      {/* Statistics Values */}
+      <div className="flex justify-between mb-3 text-[12px]">
+        <span className={stats.min === null ? 'text-[#A1A1A6]' : stats.min >= 0 ? 'text-[#DC2626]' : 'text-[#16A34A]'}>
+          {formatValue(stats.min, isPercentage)}
+        </span>
+        <span className={stats.q25 === null ? 'text-[#A1A1A6]' : stats.q25 >= 0 ? 'text-[#DC2626]' : 'text-[#16A34A]'}>
+          {formatValue(stats.q25, isPercentage)}
+        </span>
+        <span className={`font-bold text-[#0071E3] text-[13px] ${stats.median === null ? 'text-[#A1A1A6]' : ''}`}>
+          {formatValue(stats.median, isPercentage)}
+        </span>
+        <span className={stats.q75 === null ? 'text-[#A1A1A6]' : stats.q75 >= 0 ? 'text-[#DC2626]' : 'text-[#16A34A]'}>
+          {formatValue(stats.q75, isPercentage)}
+        </span>
+        <span className={stats.max === null ? 'text-[#A1A1A6]' : stats.max >= 0 ? 'text-[#DC2626]' : 'text-[#16A34A]'}>
+          {formatValue(stats.max, isPercentage)}
+        </span>
+      </div>
+
       <div className="relative">
         <svg
           ref={svgRef}
@@ -644,11 +625,6 @@ function BoxPlotCard({ title, stats, metricName, isPercentage = true }: { title:
           height={chartHeight}
           viewBox={`0 0 ${chartWidth} ${chartHeight}`}
           className="overflow-hidden"
-          onMouseMove={handleMouseMove}
-          onMouseLeave={handleMouseLeave}
-          onTouchStart={handleTouchStart}
-          onTouchEnd={handleTouchEnd}
-          onTouchMove={handleTouchMove}
         >
           <defs>
             <linearGradient id="appleBoxGradient-${title}" x1="0%" y1="0%" x2="100%" y2="0%">
@@ -694,19 +670,6 @@ function BoxPlotCard({ title, stats, metricName, isPercentage = true }: { title:
             <circle cx={xMedian} cy={yCenter} r="4" fill="#FFFFFF" stroke="#0071E3" strokeWidth="2" />
           )}
         </svg>
-        
-        {/* Tooltip via portal */}
-        {tooltip.visible && createPortal(
-          <BoxPlotTooltip
-            title={title}
-            stats={stats}
-            metricName={metricName}
-            clientX={tooltip.clientX}
-            clientY={tooltip.clientY}
-            isPercentage={isPercentage}
-          />,
-          document.body
-        )}
       </div>
       <div className="mt-4 flex items-center justify-end text-[12px] text-[#86868B]">
         <span className="text-[13px] text-[#86868B] font-medium px-2.5 py-0.5 rounded-full bg-[#00000006]">{stats.count} 只</span>

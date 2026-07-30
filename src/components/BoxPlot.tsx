@@ -25,12 +25,6 @@ export default function BoxPlot({ strategy, onClick, groupName, metric, metricNa
   const router = useRouter();
   const svgRef = useRef<SVGSVGElement>(null);
   const cardRef = useRef<HTMLDivElement>(null);
-  const [tooltip, setTooltip] = useState<TooltipData>({ clientX: 0, clientY: 0, visible: false });
-  const [isTouchDevice, setIsTouchDevice] = useState(false);
-
-  useEffect(() => {
-    setIsTouchDevice('ontouchstart' in window || navigator.maxTouchPoints > 0);
-  }, []);
 
   const { strategyType, strategyName, count, min, q25, median, q75, max } = strategy;
 
@@ -65,48 +59,6 @@ export default function BoxPlot({ strategy, onClick, groupName, metric, metricNa
   const xQ75 = mapX(q75);
   const xMax = mapX(dataMax);
 
-  const handleMouseMove = (e: React.MouseEvent<SVGSVGElement>) => {
-    if (isTouchDevice) return;
-    setTooltip({
-      clientX: e.clientX,
-      clientY: e.clientY,
-      visible: true,
-    });
-  };
-
-  const handleMouseLeave = () => {
-    if (isTouchDevice) return;
-    setTooltip({ clientX: 0, clientY: 0, visible: false });
-  };
-
-  // Touch events for mobile - show on touch, hide on release
-  const handleTouchStart = (e: React.TouchEvent<SVGSVGElement>) => {
-    if (!isTouchDevice) return;
-    e.stopPropagation();
-    const touch = e.touches[0];
-    setTooltip({
-      clientX: touch.clientX,
-      clientY: touch.clientY,
-      visible: true,
-    });
-  };
-
-  const handleTouchEnd = (e: React.TouchEvent<SVGSVGElement>) => {
-    if (!isTouchDevice) return;
-    e.stopPropagation();
-    setTooltip({ clientX: 0, clientY: 0, visible: false });
-  };
-
-  const handleTouchMove = (e: React.TouchEvent<SVGSVGElement>) => {
-    if (!isTouchDevice) return;
-    const touch = e.touches[0];
-    setTooltip({
-      clientX: touch.clientX,
-      clientY: touch.clientY,
-      visible: true,
-    });
-  };
-
   return (
     <div
       ref={cardRef}
@@ -124,6 +76,34 @@ export default function BoxPlot({ strategy, onClick, groupName, metric, metricNa
         </span>
       </div>
 
+      {/* Statistics Labels */}
+      <div className="flex justify-between mb-1 text-[11px] text-[#86868B]">
+        <span>最小值</span>
+        <span>75分位</span>
+        <span>中位数</span>
+        <span>25分位</span>
+        <span>最大值</span>
+      </div>
+
+      {/* Statistics Values */}
+      <div className="flex justify-between mb-3 text-[12px]">
+        <span className={min === null ? 'text-[#A1A1A6]' : min >= 0 ? 'text-[#DC2626]' : 'text-[#16A34A]'}>
+          {formatValue(min, isPercentage)}
+        </span>
+        <span className={q25 === null ? 'text-[#A1A1A6]' : q25 >= 0 ? 'text-[#DC2626]' : 'text-[#16A34A]'}>
+          {formatValue(q25, isPercentage)}
+        </span>
+        <span className={`font-bold text-[#0071E3] text-[13px] ${median === null ? 'text-[#A1A1A6]' : ''}`}>
+          {formatValue(median, isPercentage)}
+        </span>
+        <span className={q75 === null ? 'text-[#A1A1A6]' : q75 >= 0 ? 'text-[#DC2626]' : 'text-[#16A34A]'}>
+          {formatValue(q75, isPercentage)}
+        </span>
+        <span className={max === null ? 'text-[#A1A1A6]' : max >= 0 ? 'text-[#DC2626]' : 'text-[#16A34A]'}>
+          {formatValue(max, isPercentage)}
+        </span>
+      </div>
+
       {/* Box Plot SVG */}
       <svg
         ref={svgRef}
@@ -131,11 +111,6 @@ export default function BoxPlot({ strategy, onClick, groupName, metric, metricNa
         height={chartHeight}
         viewBox={`0 0 ${chartWidth} ${chartHeight}`}
         className="overflow-hidden"
-        onMouseMove={handleMouseMove}
-        onMouseLeave={handleMouseLeave}
-        onTouchStart={handleTouchStart}
-        onTouchEnd={handleTouchEnd}
-        onTouchMove={handleTouchMove}
       >
         <defs>
           <linearGradient id="appleBoxGradient" x1="0%" y1="0%" x2="100%" y2="0%">
@@ -238,25 +213,6 @@ export default function BoxPlot({ strategy, onClick, groupName, metric, metricNa
           />
         )}
       </svg>
-
-      {/* Footer removed - duplicate detail button */}
-
-      {/* Tooltip via Portal */}
-      {tooltip.visible && createPortal(
-        <BoxPlotTooltip
-          strategyName={strategyName}
-          metricName={metricName}
-          min={min}
-          q25={q25}
-          median={median}
-          q75={q75}
-          max={max}
-          clientX={tooltip.clientX}
-          clientY={tooltip.clientY}
-          isPercentage={isPercentage}
-        />,
-        document.body
-      )}
     </div>
   );
 }

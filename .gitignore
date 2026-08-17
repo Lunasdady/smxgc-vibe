@@ -8,3 +8,10 @@ build/
 # 数据库文件(禁止提交,防止覆盖生产数据)
 prisma/*.db
 *.db
+
+# 调试脚本归档目录(不跟踪)
+_archive-scripts/
+
+# Markdown文档(可选,按需添加)
+# *.md
+# !README.md

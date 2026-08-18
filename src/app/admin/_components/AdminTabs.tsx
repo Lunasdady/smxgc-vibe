@@ -2,11 +2,12 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Database, BarChart3, Shield } from 'lucide-react';
+import { Database, BarChart3, Shield, Mail } from 'lucide-react';
 
 const tabs = [
   { id: 'data', label: '数据管理', href: '/admin', icon: Database },
   { id: 'operation', label: '运营管理', href: '/admin/operation', icon: BarChart3 },
+  { id: 'email-parse', label: '邮件解析', href: '/admin/email-parse', icon: Mail },
   { id: 'permissions', label: '权限管理', href: '/admin/permissions', icon: Shield },
 ];
 

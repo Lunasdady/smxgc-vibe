@@ -79,7 +79,7 @@ model VerificationCode {
 
 model AccessLog {
   id        Int      @id @default(autoincrement())
-  userId    Int?     // 已登录用户ID（未登录为null）
+  userId    Int?     // 已登录用户ID(未登录为null)
   page      String   // 访问页面路径
   ip        String?  // IP地址
   userAgent String?  // 浏览器UA
@@ -88,4 +88,168 @@ model AccessLog {
   @@index([createdAt])
   @@index([page, createdAt])
   @@index([userId, createdAt])
+}
+
+model EmailConfig {
+  id                Int      @id @default(autoincrement())
+  email             String   @unique // 邮箱地址
+  imapHost          String   // IMAP服务器地址
+  imapPort          Int      @default(993) // IMAP端口
+  passwordEncrypted String   // AES加密的密码
+  sslEnabled        Boolean  @default(true) // 是否启用SSL
+  enabled           Boolean  @default(true) // 是否启用
+  lastParsedAt      DateTime? // 最后解析时间
+  lastParsedUid     String?  // 最后解析的邮件UID
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  parseResults      EmailParseResult[]
+
+  @@index([enabled])
+}
+
+model EmailParseResult {
+  id               Int      @id @default(autoincrement())
+  emailUid         String   // 邮件UID
+  subject          String   // 邮件主题
+  fromEmail        String?  // 发件人
+  sentDate         DateTime? // 邮件发送日期
+  receivedAt       DateTime // 邮件接收时间
+  emailConfigId    Int      // 关联邮箱配置
+  htmlParsed       Boolean  @default(false) // HTML是否解析成功
+  excelParsed      Boolean  @default(false) // Excel是否解析成功
+  parseStatus      String   // success / failed / skipped
+  recordCount      Int      @default(0) // 解析记录数
+  errorReason      String?  // 失败原因
+  rawData          String?  // 原始解析数据(JSON格式,用于诊断)
+  createdAt        DateTime @default(now())
+
+  emailConfig      EmailConfig @relation(fields: [emailConfigId], references: [id])
+  navData          NavData[]
+
+  @@index([emailConfigId])
+  @@index([parseStatus])
+  @@index([receivedAt])
+}
+
+model NavData {
+  id                  Int      @id @default(autoincrement())
+  productCode         String   // 产品代码
+  productName         String   // 产品名称
+  navDate             DateTime // 净值日期
+  unitNav             Float?   // 单位净值
+  cumulativeNav       Float?   // 累计净值
+  source              String   // html / excel / vertical
+  confidence          String   @default("medium") // high / medium / low
+  emailParseResultId  Int?     // 关联解析结果
+  createdAt           DateTime @default(now())
+
+  emailParseResult  EmailParseResult? @relation(fields: [emailParseResultId], references: [id])
+
+  @@unique([productCode, navDate])
+  @@index([productCode])
+  @@index([navDate])
+  @@index([productName])
+  @@index([emailParseResultId])
+}
+
+// 解析日志表 - 用于详细记录每封邮件的解析过程
+model ParseLog {
+  id                  Int      @id @default(autoincrement())
+  emailUid            String   // 邮件UID
+  subject             String   // 邮件主题
+  emailConfigId       Int      // 邮箱配置ID
+  
+  // 邮件内容信息
+  hasAttachments      Boolean  @default(false) // 是否有附件
+  attachmentCount     Int      @default(0)     // 附件数量
+  attachmentTypes     String?  // 附件MIME类型(JSON数组)
+  attachmentFilenames String?  // 附件文件名(JSON数组)
+  hasHtml             Boolean  @default(false) // 是否有HTML
+  htmlLength          Int      @default(0)     // HTML长度
+  
+  // 解析过程信息
+  parseAttempts       String   // 解析尝试(JSON对象)
+  parseResults        String?  // 解析结果(JSON对象)
+  
+  // 失败信息
+  errorReason         String?  // 失败原因
+  errorDetails        String?  // 详细错误信息
+  
+  createdAt           DateTime @default(now())
+  
+  @@index([emailUid])
+  @@index([emailConfigId])
+  @@index([createdAt])
+}
+
+// 诊断报告表 - 记录自诊断分析结果
+model DiagnosticReport {
+  id                  Int      @id @default(autoincrement())
+  report              String   // JSON格式的诊断报告
+  failedCount         Int      @default(0)     // 失败邮件数量
+  successRate         Float    @default(0)     // 成功率百分比
+  suggestionsCount    Int      @default(0)     // 优化建议数量
+  createdAt           DateTime @default(now())
+  
+  @@index([createdAt])
+}
+
+// 优化记录表 - 记录每次自动优化的详情
+model OptimizationRecord {
+  id                  Int      @id @default(autoincrement())
+  timestamp           DateTime @default(now()) // 优化时间
+  
+  // 优化前状态
+  beforeSuccessRate   Float    @default(0)     // 优化前成功率
+  beforeFailedCount   Int      @default(0)     // 优化前失败数
+  
+  // 优化内容
+  optimizations       String   // JSON数组,记录所有优化项
+  newAliases          String?  // 新增的字段别名(JSON数组)
+  newStrategies       String?  // 新增的解析策略(JSON数组)
+  
+  // 优化后状态
+  afterSuccessRate    Float?   // 优化后成功率
+  afterFailedCount    Int?     // 优化后失败数
+  improvedCount       Int?     // 成功修复的邮件数
+  
+  // 验证结果
+  validationReport    String?  // JSON格式的验证报告
+  
+  createdAt           DateTime @default(now())
+  
+  @@index([createdAt])
+  @@index([timestamp])
+}
+
+model ParseRule {
+  id        Int      @id @default(autoincrement())
+  ruleType  String   // field_alias / filter_keyword / parse_strategy
+  ruleKey   String   // 规则键
+  ruleValue String   // 规则值
+  enabled   Boolean  @default(true) // 是否启用
+  createdAt DateTime @default(now())
+
+  @@index([ruleType])
+  @@index([enabled])
+}
+
+model ParseTask {
+  id          String   @id // taskId: parse_{configId}_{timestamp}
+  configId    Int      // 邮箱配置ID
+  progress    Int      @default(0) // 进度百分比 0-100
+  total       Int      @default(0) // 总邮件数
+  current     Int      @default(0) // 当前处理数
+  status      String   @default("pending") // pending / processing / completed / failed / cancelled
+  message     String   @default("等待解析...") // 状态消息
+  fullParse   Boolean  @default(false) // 是否全量解析
+  testLimit   Int?     // 测试解析限制数量
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  completedAt DateTime?
+
+  @@index([status])
+  @@index([configId])
+  @@index([createdAt])
 }

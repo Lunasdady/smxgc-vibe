@@ -23,33 +23,118 @@ export function parseHtmlTables(html: string): ParsedTable[] {
 }
 
 /**
- * 解析单个表格
+ * 🚨 重写: 解析单个表格(支持标题行跳过、二级表头、colspan展开)
  */
 function parseSingleTable($: cheerio.Root, table: cheerio.Element): ParsedTable | null {
-  const headers: string[] = [];
-  const rows: Record<string, string>[] = [];
+  const allRows = $(table).find('tr');
+  if (allRows.length === 0) {
+    return null;
+  }
   
-  // 查找表头
-  const headerRow = $(table).find('thead tr').first();
-  if (headerRow.length > 0) {
-    headerRow.find('th, td').each((_, cell) => {
-      headers.push($(cell).text().trim());
-    });
-  } else {
-    // 如果没有thead,尝试查找tbody中的第一行
-    const firstRow = $(table).find('tbody tr').first();
-    if (firstRow.length > 0) {
-      firstRow.find('td, th').each((_, cell) => {
-        headers.push($(cell).text().trim());
-      });
-    } else {
-      // 🚨 如果没有tbody,直接查找tr
-      const allRows = $(table).find('tr');
-      if (allRows.length > 0) {
-        allRows.first().find('td, th').each((_, cell) => {
-          headers.push($(cell).text().trim());
-        });
+  // 🚨 Step 1: 收集所有行的单元格信息(展开colspan)
+  const rowInfos: { cells: string[]; isHeader: boolean }[] = [];
+  
+  allRows.each((_, row) => {
+    const cells: string[] = [];
+    // 🚨 修复: 使用children而不是find，避免递归查找嵌套表格的单元格
+    $(row).children('th, td').each((_, cell) => {
+      const text = $(cell).text().trim();
+      const colspan = parseInt($(cell).attr('colspan') || '1', 10);
+      // 展开colspan: 重复添加文本
+      for (let i = 0; i < colspan; i++) {
+        cells.push(text);
       }
+    });
+    
+    const isHeader = $(row).find('th').length > 0 || $(row).closest('thead').length > 0;
+    rowInfos.push({ cells, isHeader });
+  });
+  
+  if (rowInfos.length === 0) {
+    return null;
+  }
+  
+  // 🚨 Step 2: 检测并跳过标题行(样本1: "日期：2024年07月01日")
+  let headerStartIndex = 0;
+  const firstRow = rowInfos[0];
+  
+  // 获取原始单元格数量(不考虑colspan展开)
+  const firstRowOriginalCells = $(allRows[0]).children('th, td').length;
+  
+  // 如果第一行只有1个原始单元格，且包含"日期"、"净值"等标题关键词，则跳过
+  // 即使这个单元格有colspan=5，展开后有5列，也认为是标题行
+  if (firstRowOriginalCells === 1) {
+    const titleKeywords = ['日期', '净值', '公告', '发送', '产品净值', '资产净值'];
+    const firstCell = firstRow.cells[0];
+    if (titleKeywords.some(kw => firstCell.includes(kw))) {
+      console.log(`📋 跳过标题行: "${firstCell.substring(0, 30)}..."`);
+      headerStartIndex = 1;
+    }
+  }
+  
+  // 🚨 Step 3: 检测二级表头(样本2: "净值情况" colspan=3)
+  // 如果header行后面紧跟着的行的列数更多，说明有二级表头
+  let headers: string[] = [];
+  let dataStartIndex = headerStartIndex + 1;
+  
+  if (headerStartIndex < rowInfos.length) {
+    const primaryHeaders = rowInfos[headerStartIndex].cells;
+    
+    // 检查是否有二级表头
+    if (headerStartIndex + 1 < rowInfos.length) {
+      const secondaryRow = rowInfos[headerStartIndex + 1];
+      const secondaryCells = secondaryRow.cells;
+      
+      // 🚨 修复: 二级表头特征检测
+      // 1. 第二行是th或thead中的tr
+      // 2. 第二行列数 > 主表头列数
+      // 3. 主表头中有空单元格(占位符)
+      // 4. 🚨 新增: 第二行包含与主表头不同的非空内容（如“单位净值”、“累计单位净值”）
+      const hasEmptyPrimary = primaryHeaders.some(h => h === '');
+      const hasDifferentContent = secondaryCells.some((cell, idx) => {
+        return cell !== '' && cell !== primaryHeaders[idx];
+      });
+      const isLikelySecondary = secondaryRow.isHeader || 
+                                (secondaryCells.length > primaryHeaders.length) ||
+                                hasEmptyPrimary ||
+                                hasDifferentContent;
+      
+      if (isLikelySecondary && secondaryCells.length > 0) {
+        console.log(`📋 检测到二级表头: 主表头=[${primaryHeaders.join(', ')}], 二级=[${secondaryCells.join(', ')}]`);
+        
+        // 🚨 修复: 合并主表头和二级表头
+        // 策略:
+        // 1. 如果二级表头非空，优先使用二级表头
+        // 2. 如果二级表头为空但主表头非空，使用主表头
+        // 3. 如果主表头是通用词汇(如"净值情况")，使用对应的二级表头
+        for (let i = 0; i < primaryHeaders.length; i++) {
+          const primary = primaryHeaders[i];
+          const secondary = secondaryCells[i] || '';  // 🚨 直接使用相同索引
+          
+          // 如果二级表头非空
+          if (secondary !== '') {
+            // 🚨 特殊处理: 如果主表头是通用词汇，直接使用二级表头
+            const genericHeaders = ['净值情况', '净值', '操作', '状态', '信息'];
+            if (primary === '' || genericHeaders.some(g => primary.includes(g))) {
+              headers.push(secondary);
+            } else {
+              // 组合主表头和二级表头
+              headers.push(`${primary}-${secondary}`);
+            }
+          } else if (primary !== '') {
+            // 二级表头为空，使用主表头
+            headers.push(primary);
+          }
+          // 如果都为空，不添加
+        }
+        
+        dataStartIndex = headerStartIndex + 2;
+        console.log(`📋 合并后表头: [${headers.join(', ')}]`);
+      } else {
+        headers = primaryHeaders;
+      }
+    } else {
+      headers = primaryHeaders;
     }
   }
   
@@ -57,27 +142,27 @@ function parseSingleTable($: cheerio.Root, table: cheerio.Element): ParsedTable 
     return null;
   }
   
-  // 解析数据行
-  $(table).find('tr').each((index, row) => {
-    // 跳过表头行
-    if (index === 0 && !$(table).find('thead').length) {
-      return;
+  // 🚨 Step 4: 解析数据行
+  const rows: Record<string, string>[] = [];
+  
+  for (let i = dataStartIndex; i < rowInfos.length; i++) {
+    const rowInfo = rowInfos[i];
+    const rowData: Record<string, string> = {};
+    
+    for (let j = 0; j < Math.min(rowInfo.cells.length, headers.length); j++) {
+      const value = rowInfo.cells[j];
+      if (value !== '') {
+        rowData[headers[j]] = value;
+      }
     }
     
-    const rowData: Record<string, string> = {};
-    const cells = $(row).find('td, th');
-    
-    cells.each((cellIndex, cell) => {
-      if (cellIndex < headers.length) {
-        rowData[headers[cellIndex]] = $(cell).text().trim();
-      }
-    });
-    
-    // 只添加非空行
-    if (Object.values(rowData).some(val => val !== '')) {
+    // 只添加包含有效数据的行
+    if (Object.keys(rowData).length > 0) {
       rows.push(rowData);
     }
-  });
+  }
+  
+  console.log(`📋 表格解析结果: ${headers.length}列, ${rows.length}行数据`);
   
   return { headers, rows };
 }
@@ -147,7 +232,8 @@ export function parseHtmlKeyValue(html: string): Record<string, string> | null {
   
   // 字段映射规则(用于正则匹配)
   const fieldPatterns: { pattern: RegExp; field: string }[] = [
-    { pattern: /(净值日期|日期|统计日|估值日期)[：:\s]*([\d-]+)/i, field: '日期' },
+    // 🚨 修复: 支持中文日期格式 "2024年07月01日" 和标准格式 "2024-07-01"
+    { pattern: /(净值日期|日期|统计日|估值日期)[：:\s]*([\d]{4}年[\d]{1,2}月[\d]{1,2}日|[\d]{4}-[\d]{1,2}-[\d]{1,2})/i, field: '日期' },
     { pattern: /(基金代码|产品代码|代码|协会备案代码)[：:\s]*([A-Za-z0-9]{4,})/i, field: '产品代码' },  // 🚨 产品代码至少4位
     { pattern: /(基金名称|产品名称|名称)[：:\s]*([^：:\n\r\t]{2,50})/i, field: '产品名称' },  // 🚨 排除冒号,避免匹配"总资产净值:xxx"
     { pattern: /(基金份额净值|单位净值|产品单位净值)[：:\s]*([\d.]+)/i, field: '单位净值' },  // 🚨 排除单独的"净值"

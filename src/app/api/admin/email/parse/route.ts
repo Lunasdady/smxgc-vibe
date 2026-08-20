@@ -17,7 +17,7 @@ const cancelSignalMap = getCancelSignalMap();
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { emailConfigId, fullParse, testLimit } = body;
+    const { emailConfigId, fullParse, testLimit, testEarly, reparseFailed } = body;
     
     // 获取邮箱配置
     let configs;
@@ -46,6 +46,16 @@ export async function POST(request: Request) {
       const taskId = `parse_${config.id}_${Date.now()}`;
       taskIds.push(taskId);
       
+      // 🚨 根据模式设置任务描述
+      let taskMessage = '等待解析...';
+      if (reparseFailed) {
+        taskMessage = '等待重新解析失败的邮件...';
+      } else if (fullParse) {
+        taskMessage = '等待全量解析...';
+      } else if (testLimit) {
+        taskMessage = `等待测试解析（${testLimit}封）...`;
+      }
+      
       // 保存到数据库
       await prisma.parseTask.create({
         data: {
@@ -55,22 +65,28 @@ export async function POST(request: Request) {
           total: 0,
           current: 0,
           status: 'pending',
-          message: '等待解析...',
+          message: taskMessage,
           fullParse: !!fullParse,
           testLimit: testLimit || null,
         },
       });
-      
-      console.log('✅ 创建解析任务:', taskId);
-      
+            
+      console.log('✅ 创建解析任务:', taskId, reparseFailed ? '(重新解析失败)' : '');
+            
       // 异步执行解析
-      executeParse(taskId, config.id, !!fullParse, testLimit);
+      executeParse(taskId, config.id, !!fullParse, testLimit, testEarly, !!reparseFailed);
+    }
+    
+    // 🚨 生成友好的消息
+    let message = `已启动 ${taskIds.length} 个解析任务`;
+    if (reparseFailed) {
+      message = `已启动 ${taskIds.length} 个重新解析任务（仅失败邮件）`;
     }
     
     return NextResponse.json({
       success: true,
       taskIds,
-      message: `已启动 ${taskIds.length} 个解析任务`,
+      message,
     });
   } catch (error) {
     console.error('Error starting parse task:', error);
@@ -84,7 +100,7 @@ export async function POST(request: Request) {
 /**
  * 执行解析任务
  */
-async function executeParse(taskId: string, configId: number, fullParse: boolean = false, testLimit?: number) {
+async function executeParse(taskId: string, configId: number, fullParse: boolean = false, testLimit?: number, testEarly?: boolean, reparseFailed?: boolean) {
   try {
     // 更新状态为processing
     await prisma.parseTask.update({
@@ -122,7 +138,7 @@ async function executeParse(taskId: string, configId: number, fullParse: boolean
           message: progress.message,
         },
       });
-    }, { fullParse, testLimit });
+    }, { fullParse, testLimit, testEarly, reparseFailed });
     
     // 再次检查是否已取消
     if (cancelSignalMap.get(taskId)) {
@@ -163,9 +179,9 @@ async function executeParse(taskId: string, configId: number, fullParse: boolean
 }
 
 /**
- * 取消解析任务
+ * 取消解析任务（内部函数）
  */
-export async function cancelParseTask(taskId: string): Promise<boolean> {
+async function cancelParseTask(taskId: string): Promise<boolean> {
   const task = await prisma.parseTask.findUnique({
     where: { id: taskId },
   });

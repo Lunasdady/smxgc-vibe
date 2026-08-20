@@ -1,5 +1,6 @@
 import cron from 'node-cron';
 import prisma from '@/lib/db';
+import { parseEmailConfig } from './engine';
 
 let schedulerStarted = false;
 
@@ -58,19 +59,41 @@ async function executeParseTask(): Promise<void> {
 }
 
 /**
- * 解析单个邮箱
+ * 解析单个邮箱（增量解析）
  */
 async function parseSingleEmail(configId: number): Promise<void> {
-  // TODO: 实现完整的解析逻辑
-  // 1. 建立IMAP连接
-  // 2. 获取新邮件
-  // 3. 解析HTML和Excel
-  // 4. 字段映射和数据清洗
-  // 5. 存储净值数据
-  // 6. 更新lastParsedUid
+  console.log(`📮 开始增量解析邮箱配置ID: ${configId}`);
   
-  await prisma.emailConfig.update({
-    where: { id: configId },
-    data: { lastParsedAt: new Date() },
-  });
+  try {
+    // 调用完整的解析引擎（增量模式）
+    const result = await parseEmailConfig(configId, (progress) => {
+      // 定时任务不需要更新UI进度，只记录日志
+      if (progress.progress % 25 === 0) { // 每25%记录一次
+        console.log(`📊 进度: ${progress.progress}% - ${progress.message}`);
+      }
+    }, {
+      fullParse: false,    // 增量解析
+      testLimit: undefined, // 不限制数量
+      testEarly: false,
+      reparseFailed: false,
+    });
+    
+    // 记录解析结果
+    if (result.success) {
+      console.log(`✅ 邮箱解析完成: 成功 ${result.successCount} 封, 失败 ${result.failedCount} 封, 跳过 ${result.skippedCount} 封`);
+    } else {
+      console.error(`❌ 邮箱解析失败: ${result.message}`);
+    }
+    
+    // 更新最后解析时间
+    await prisma.emailConfig.update({
+      where: { id: configId },
+      data: { lastParsedAt: new Date() },
+    });
+    
+  } catch (error: any) {
+    console.error(`❌ 解析邮箱配置ID ${configId} 失败:`, error.message);
+    console.error(error.stack);
+    throw error;
+  }
 }

@@ -1,11 +1,11 @@
 import dayjs from 'dayjs';
 
 export interface CleanedNavData {
-  productCode: string;
-  productName: string;
-  navDate: string;
-  unitNav: number | null;
-  cumulativeNav: number | null;
+  productCode: string;      // 产品代码（必填）
+  productName: string;      // 产品名称（必填）
+  navDate: string;          // 净值日期（必填）
+  unitNav: number;          // 单位净值（必填，不再允许null）
+  cumulativeNav: number;    // 累计净值（必填，不再允许null）
 }
 
 export interface DataQualityIssue {
@@ -42,11 +42,22 @@ export function cleanNavData(
     return { cleaned: null, issues };
   }
   
-  // 🚨 优化: productName不再是必填(很多邮件没有产品名称)
-  // if (!productName) {
-  //   issues.push({ type: 'missing', message: '缺少产品名称' });
-  //   return { cleaned: null, issues };
-  // }
+  // 🚨 修复: productName现在是必填字段（用户需求：5个指标都必须不为空）
+  // 之前允许空值导致“净值成功落库”统计不准确
+  if (!productName) {
+    issues.push({ type: 'missing', message: '缺少产品名称' });
+    return { cleaned: null, issues };
+  }
+  
+  // 🚨 修复2: 检测productName是否被错误填充为邮件主题
+  const subjectKeywords = ['【净值表】', '【净值自动发送】', '【净值公告】', '管理人旗下', '等', '个产品', '发送'];
+  const isLikelySubject = subjectKeywords.some(kw => productName.includes(kw));
+  
+  if (isLikelySubject) {
+    console.log(`⚠️ productName可能是邮件主题，拒绝保存: "${productName.substring(0, 50)}..."`);
+    issues.push({ type: 'missing', message: '产品名称被错误填充为邮件主题' });
+    return { cleaned: null, issues };
+  }
   
   // 智能派生产品代码(处理母基金→子基金的情况)
   const derivedProductCode = deriveProductCode(productCode, productName);
@@ -63,18 +74,26 @@ export function cleanNavData(
   const navDate = navDateResult;
   
   // 解析净值
-  const unitNav = parseFloat(unitNavStr);
+  const unitNav = unitNavStr ? parseFloat(unitNavStr) : null;
   let cumulativeNav = cumulativeNavStr ? parseFloat(cumulativeNavStr) : null;
   
-  // 如果没有累计净值,使用单位净值作为累计净值(常见情况)
-  if (cumulativeNav === null && !isNaN(unitNav)) {
-    cumulativeNav = unitNav;
-  }
-  
-  // 验证净值范围 (增强版)
-  if (isNaN(unitNav)) {
+  // 🚨 修复: unitNav现在是必填字段（净值数据的核心）
+  // 只有当unitNavStr存在但解析失败时才报错
+  if (unitNavStr && (unitNav === null || isNaN(unitNav))) {
     issues.push({ type: 'missing', message: `单位净值无效: ${unitNavStr}` });
     return { cleaned: null, issues };
+  }
+  
+  // 🚨 修复: unitNav为null视为数据不完整，拒绝保存
+  // 之前允许空值导致44.84%的净值数据为空（88,987条）
+  if (unitNav === null) {
+    issues.push({ type: 'missing', message: '缺少单位净值' });
+    return { cleaned: null, issues };
+  }
+  
+  // 如果没有累计净值,使用单位净值作为累计净值(常见情况)
+  if (cumulativeNav === null) {
+    cumulativeNav = unitNav;
   }
   
   // 单位净值范围：0.1 - 100
@@ -88,7 +107,7 @@ export function cleanNavData(
   }
   
   // 累计净值范围：0.1 - 1000
-  if (cumulativeNav !== null && (cumulativeNav < 0.1 || cumulativeNav > 1000)) {
+  if (cumulativeNav < 0.1 || cumulativeNav > 1000) {
     issues.push({
       type: 'anomaly',
       message: `累计净值超出正常范围(0.1-1000): ${cumulativeNav}`,
@@ -177,7 +196,16 @@ export function normalizeDate(dateStr: string): string | null {
 }
 
 /**
+ * 🚨 新增: 验证年份是否在合理范围内(1990-2100)
+ * 防止Excel日期序列号被误解析为年份(如"4624")
+ */
+function isValidYear(year: number): boolean {
+  return year >= 1990 && year <= 2100;
+}
+
+/**
  * 灵活解析日期(支持4种格式)
+ * 🚨 增强: 添加年份范围验证，防止错误日期入库
  */
 function parseDateFlexible(dateStr: string): string | null {
   const trimmed = dateStr.trim();
@@ -185,43 +213,65 @@ function parseDateFlexible(dateStr: string): string | null {
   // 格式1: 2024-07-01
   let match = trimmed.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
   if (match) {
-    const year = match[1];
-    const month = match[2].padStart(2, '0');
-    const day = match[3].padStart(2, '0');
-    return `${year}-${month}-${day}`;
+    const year = parseInt(match[1]);
+    const month = parseInt(match[2]);
+    const day = parseInt(match[3]);
+    // 🚨 验证年份合理性
+    if (!isValidYear(year) || month < 1 || month > 12 || day < 1 || day > 31) {
+      console.warn(`⚠️ 日期年份不合理: ${trimmed} (year=${year})`);
+      return null;
+    }
+    return `${match[1]}-${match[2].padStart(2, '0')}-${match[3].padStart(2, '0')}`;
   }
   
   // 格式2: 2024/07/01
   match = trimmed.match(/^(\d{4})\/(\d{1,2})\/(\d{1,2})$/);
   if (match) {
-    const year = match[1];
-    const month = match[2].padStart(2, '0');
-    const day = match[3].padStart(2, '0');
-    return `${year}-${month}-${day}`;
+    const year = parseInt(match[1]);
+    const month = parseInt(match[2]);
+    const day = parseInt(match[3]);
+    if (!isValidYear(year) || month < 1 || month > 12 || day < 1 || day > 31) {
+      console.warn(`⚠️ 日期年份不合理: ${trimmed} (year=${year})`);
+      return null;
+    }
+    return `${match[1]}-${match[2].padStart(2, '0')}-${match[3].padStart(2, '0')}`;
   }
   
   // 格式3: 20240701
   match = trimmed.match(/^(\d{4})(\d{2})(\d{2})$/);
   if (match) {
-    const year = match[1];
-    const month = match[2];
-    const day = match[3];
-    return `${year}-${month}-${day}`;
+    const year = parseInt(match[1]);
+    const month = parseInt(match[2]);
+    const day = parseInt(match[3]);
+    if (!isValidYear(year) || month < 1 || month > 12 || day < 1 || day > 31) {
+      console.warn(`⚠️ 日期年份不合理: ${trimmed} (year=${year})`);
+      return null;
+    }
+    return `${match[1]}-${match[2]}-${match[3]}`;
   }
   
-  // 格式4: 2024年7月1日
+  // 格式4: 2024年7月1日（中文日期格式）
   match = trimmed.match(/^(\d{4})年(\d{1,2})月(\d{1,2})日$/);
   if (match) {
-    const year = match[1];
-    const month = match[2].padStart(2, '0');
-    const day = match[3].padStart(2, '0');
-    return `${year}-${month}-${day}`;
+    const year = parseInt(match[1]);
+    const month = parseInt(match[2]);
+    const day = parseInt(match[3]);
+    if (!isValidYear(year) || month < 1 || month > 12 || day < 1 || day > 31) {
+      console.warn(`⚠️ 日期年份不合理: ${trimmed} (year=${year})`);
+      return null;
+    }
+    return `${match[1]}-${match[2].padStart(2, '0')}-${match[3].padStart(2, '0')}`;
   }
   
   // 兜底: 使用dayjs解析
   try {
     const date = dayjs(trimmed);
     if (date.isValid()) {
+      const year = date.year();
+      if (!isValidYear(year)) {
+        console.warn(`⚠️ 日期年份不合理: ${trimmed} (year=${year})`);
+        return null;
+      }
       return date.format('YYYY-MM-DD');
     }
   } catch {

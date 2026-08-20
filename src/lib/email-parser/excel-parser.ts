@@ -4,8 +4,61 @@ export interface ParsedSheet {
   sheetName: string;
   headers: string[];
   rows: Record<string, string>[];
-  hasTwoLevelHeader?: boolean; // 是否2级表头
+  hasTwoLevelHeader?: boolean; // 否2级表头
   isVertical?: boolean; // 是否纵向表格
+}
+
+/**
+ * 🚨 新增: Excel日期序列号转换为标准日期格式
+ * Excel使用序列号表示日期，从1900-01-01开始的天数
+ * 例如: 45478 = 2024-07-05
+ */
+function convertExcelDate(excelDate: number | string | Date): string | null {
+  // 如果已经是 Date 对象，直接格式化
+  if (excelDate instanceof Date) {
+    if (isNaN(excelDate.getTime())) {
+      return null;
+    }
+    const year = excelDate.getFullYear();
+    const month = String(excelDate.getMonth() + 1).padStart(2, '0');
+    const day = String(excelDate.getDate()).padStart(2, '0');
+    const formatted = `${year}-${month}-${day}`;
+    console.log(`📅 Excel日期(Date对象)转换: ${excelDate.toISOString()} → ${formatted}`);
+    return formatted;
+  }
+  
+  // 如果是字符串且不是数字，直接返回
+  if (typeof excelDate === 'string' && isNaN(Number(excelDate))) {
+    return excelDate;
+  }
+  
+  const serialNumber = typeof excelDate === 'string' ? parseFloat(excelDate) : excelDate;
+  
+  // 🚨 修复: 扩大范围，覆盖所有可能的Excel日期序列号
+  // Excel日期范围: 1 (1900-01-01) ~ 60000 (2064-03-31)
+  if (isNaN(serialNumber) || serialNumber < 1 || serialNumber > 60000) {
+    return typeof excelDate === 'string' ? excelDate : String(excelDate);
+  }
+  
+  try {
+    // 使用 XLSX 库的标准转换公式
+    const utc_days = Math.floor(serialNumber - 25569);
+    const utc_value = utc_days * 86400;
+    const actualDate = new Date(utc_value * 1000);
+    
+    // 格式化为 YYYY-MM-DD
+    const year = actualDate.getFullYear();
+    const month = String(actualDate.getMonth() + 1).padStart(2, '0');
+    const day = String(actualDate.getDate()).padStart(2, '0');
+    
+    const formattedDate = `${year}-${month}-${day}`;
+    console.log(`📅 Excel日期(序列号)转换: ${serialNumber} → ${formattedDate}`);
+    
+    return formattedDate;
+  } catch (error) {
+    console.error(`❌ Excel日期转换失败: ${serialNumber}`, error);
+    return typeof excelDate === 'string' ? excelDate : String(excelDate);
+  }
 }
 
 /**
@@ -150,9 +203,19 @@ function parseTwoLevelHeader(data: any[][], sheetName: string, worksheet?: any):
       const rowObj: Record<string, string> = {};
       
       mergedHeaders.forEach((header, colIdx) => {
-        const value = row[colIdx];
+        let value = row[colIdx];
         if (value !== null && value !== undefined) {
-          rowObj[header] = String(value).trim();
+          let valueStr = String(value).trim();
+          
+          // 🚨 新增: 转换Excel日期序列号
+          if (header.includes('日期') || header.includes('Date') || header === 'navDate') {
+            const convertedDate = convertExcelDate(value);
+            if (convertedDate) {
+              valueStr = convertedDate;
+            }
+          }
+          
+          rowObj[header] = valueStr;
         }
       });
       
@@ -393,7 +456,16 @@ function parseMultiLevelHeader(data: any[][], sheetName: string, worksheet: any,
     headerColMap.forEach(({ header, colIndex }) => {
       const value = row[colIndex];
       if (value !== null && value !== undefined) {
-        const valStr = String(value).trim();
+        let valStr = String(value).trim();
+        
+        // 🚨 新增: 转换Excel日期序列号
+        if (header.includes('日期') || header.includes('Date') || header === 'navDate') {
+          const convertedDate = convertExcelDate(value);
+          if (convertedDate) {
+            valStr = convertedDate;
+          }
+        }
+        
         if (valStr) {
           rowObj[header] = valStr;
         }
@@ -757,9 +829,19 @@ function parseStandardHeader(data: any[][], sheetName: string): ParsedSheet | nu
     
     headers.forEach((header, colIdx) => {
       if (header) {
-        const value = row[colIdx];
+        let value = row[colIdx];
         if (value !== null && value !== undefined) {
-          rowObj[header] = String(value).trim();
+          let valueStr = String(value).trim();
+          
+          // 🚨 新增: 转换Excel日期序列号
+          if (header.includes('日期') || header.includes('Date') || header === 'navDate') {
+            const convertedDate = convertExcelDate(value);
+            if (convertedDate) {
+              valueStr = convertedDate;
+            }
+          }
+          
+          rowObj[header] = valueStr;
         }
       }
     });

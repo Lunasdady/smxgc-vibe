@@ -78,26 +78,56 @@ function parseSingleTable($: cheerio.Root, table: cheerio.Element): ParsedTable 
   let dataStartIndex = headerStartIndex + 1;
   
   if (headerStartIndex < rowInfos.length) {
-    const primaryHeaders = rowInfos[headerStartIndex].cells;
+    let primaryHeaders = rowInfos[headerStartIndex].cells;
+    
+    // 🚨 修复3: 检测是否是标题行（不是真正的表头）
+    const titleKeywords = ['专用表', '净值表', '资产净值', '公告', '浏览表'];
+    const isTitleRow = primaryHeaders.some(cell => 
+      cell.length > 20 && titleKeywords.some(kw => cell.includes(kw))
+    );
+    
+    if (isTitleRow) {
+      console.log(`⚠️ 跳过标题行: "${primaryHeaders[0].substring(0, 30)}..."`);
+      headerStartIndex++;
+      dataStartIndex = headerStartIndex + 1;
+      
+      if (headerStartIndex < rowInfos.length) {
+        primaryHeaders = rowInfos[headerStartIndex].cells;
+      } else {
+        return null;  // 没有更多行
+      }
+    }
     
     // 检查是否有二级表头
     if (headerStartIndex + 1 < rowInfos.length) {
       const secondaryRow = rowInfos[headerStartIndex + 1];
       const secondaryCells = secondaryRow.cells;
       
-      // 🚨 修复: 二级表头特征检测
-      // 1. 第二行是th或thead中的tr
-      // 2. 第二行列数 > 主表头列数
-      // 3. 主表头中有空单元格(占位符)
-      // 4. 🚨 新增: 第二行包含与主表头不同的非空内容（如“单位净值”、“累计单位净值”）
+      // 🚨 修复: 二级表头特征检测（更严格）
+      // 二级表头必须是真正的表头，而不是数据行
+      // 1. 第二行是th或thead中的tr（强特征）
+      // 2. 第二行列数 > 主表头列数（强特征）
+      // 3. 主表头中有空单元格且第二行对应位置非空（强特征）
+      // 4. 🚨 新增: 第二行包含表头关键词（不是数值、日期、产品代码）
+            
       const hasEmptyPrimary = primaryHeaders.some(h => h === '');
-      const hasDifferentContent = secondaryCells.some((cell, idx) => {
-        return cell !== '' && cell !== primaryHeaders[idx];
-      });
-      const isLikelySecondary = secondaryRow.isHeader || 
-                                (secondaryCells.length > primaryHeaders.length) ||
-                                hasEmptyPrimary ||
-                                hasDifferentContent;
+      const isSecondaryHeader = secondaryRow.isHeader || 
+                                secondaryCells.length > primaryHeaders.length;
+            
+      // 🚨 关键修复: 检查第二行是否包含表头特征词
+      const headerKeywords = ['日期', '产品', '净值', '代码', '名称', '份额', '资产', '序号', '备注'];
+      const dataKeywords = [/^[A-Z]{2,6}\d+[A-Z]*$/, /^\d{4}[-年]/, /^[\d,.]+$/, /^\d+$/]; // 产品代码、日期、数字
+            
+      const hasHeaderTerms = secondaryCells.some(cell => 
+        cell !== '' && headerKeywords.some(kw => cell.includes(kw))
+      );
+            
+      const isDataRow = secondaryCells.some(cell =>
+        cell !== '' && dataKeywords.some(regex => regex.test(cell))
+      );
+            
+      // 只有当第二行包含表头关键词，且不包含数据特征时，才认为是二级表头
+      const isLikelySecondary = (isSecondaryHeader || (hasEmptyPrimary && hasHeaderTerms)) && !isDataRow;
       
       if (isLikelySecondary && secondaryCells.length > 0) {
         console.log(`📋 检测到二级表头: 主表头=[${primaryHeaders.join(', ')}], 二级=[${secondaryCells.join(', ')}]`);
@@ -163,6 +193,16 @@ function parseSingleTable($: cheerio.Root, table: cheerio.Element): ParsedTable 
   }
   
   console.log(`📋 表格解析结果: ${headers.length}列, ${rows.length}行数据`);
+  
+  // 🚨 修复2: 检测表格是否被破坏
+  if (rows.length === 0 || headers.every(h => h === '')) {
+    console.log(`⚠️ 表格可能被破坏，尝试备用解析...`);
+    const backupRows = parseBrokenTable($, table);
+    if (backupRows.length > 0) {
+      console.log(`✅ 备用解析成功: ${backupRows.length}行`);
+      return { headers: Object.keys(backupRows[0]), rows: backupRows };
+    }
+  }
   
   return { headers, rows };
 }
@@ -324,4 +364,57 @@ export function parseHtmlKeyValue(html: string): Record<string, string> | null {
   });
   
   return null;
+}
+
+/**
+ * 🚨 修复2: 备用解析方法 - 用于处理表格结构被破坏的情况
+ * 直接从HTML中提取关键字段，不依赖表格结构
+ */
+function parseBrokenTable($: cheerio.Root, table: cheerio.Element): Record<string, string>[] {
+  console.log(`🔍 备用解析: 从 HTML中提取关键字段...`);
+  
+  const text = $(table).text();
+  const rows: Record<string, string>[] = [];
+  
+  // 字段提取规则
+  const fieldPatterns = [
+    { pattern: /产品代码[：:\s]*([A-Z]{2,6}\d+[A-Z]*)/i, field: '产品代码' },
+    { pattern: /基金代码[：:\s]*([A-Z]{2,6}\d+[A-Z]*)/i, field: '产品代码' },
+    { pattern: /产品名称[：:\s]*([^\n\r\t]{2,50})/i, field: '产品名称' },
+    { pattern: /基金名称[：:\s]*([^\n\r\t]{2,50})/i, field: '产品名称' },
+    { pattern: /(单位净值|份额净值)[：:\s]*([\d.]+)/i, field: '单位净值' },
+    { pattern: /(累计净值|累计单位净值)[：:\s]*([\d.]+)/i, field: '累计净值' },
+    { pattern: /净值日期[：:\s]*([\d]{4}[-年][\d]{1,2}[-月][\d]{1,2}[日]?)/i, field: '日期' },
+    { pattern: /日期[：:\s]*([\d]{4}[-年][\d]{1,2}[-月][\d]{1,2}[日]?)/i, field: '日期' },
+  ];
+  
+  const record: Record<string, string> = {};
+  
+  for (const { pattern, field } of fieldPatterns) {
+    const match = text.match(pattern);
+    if (match && match[1] && match[1].trim()) {
+      const value = match[1].trim();
+      
+      // 🚨 修复3: 过滤表头文字的误提取
+      const headerKeywords = ['单位净值', '累计净值', '产品代码', '产品名称', '基金代码', '基金名称', '日期', '净值日期'];
+      if (headerKeywords.some(kw => value.includes(kw))) {
+        console.log(`  ⚠️ 过滤表头文字: ${field} = "${value}"`);
+        continue;  // 跳过表头文字
+      }
+      
+      // 日期格式标准化
+      if (field === '日期') {
+        record[field] = value.replace(/[年月]/g, '-').replace(/日/g, '');
+      } else {
+        record[field] = value;
+      }
+      console.log(`  ✅ 提取: ${field} = ${value}`);
+    }
+  }
+  
+  if (Object.keys(record).length >= 3) {  // 至少3个字段
+    rows.push(record);
+  }
+  
+  return rows;
 }

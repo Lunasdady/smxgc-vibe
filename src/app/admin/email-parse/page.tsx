@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
+import Pagination from '@/components/Pagination';
 
 export default function EmailParsePage() {
   const [activeTab, setActiveTab] = useState<'configs' | 'results' | 'nav'>('configs');
@@ -295,6 +296,42 @@ function EmailConfigsTab({
     }
   };
 
+  // 🚨 重新解析失败的邮件
+  const reparseFailed = async (configId: number) => {
+    console.log('🚨 开始重新解析失败的邮件, configId:', configId);
+    setParseingId(configId);
+    setMessage('');
+    setParseProgress(null);
+    
+    try {
+      const response = await fetch('/api/admin/email/parse', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ emailConfigId: configId, reparseFailed: true }),
+      });
+      
+      const data = await response.json();
+      console.log('📡 重新解析API响应:', data);
+      
+      if (response.ok && data.taskIds && data.taskIds.length > 0) {
+        const taskId = data.taskIds[0];
+        console.log('✅ 获取到taskId:', taskId);
+        setMessage(`✅ ${data.message}`);
+        
+        // 开始轮询进度
+        startProgressPolling(taskId);
+      } else {
+        console.error('❌ 重新解析失败,响应数据:', data);
+        setMessage(`❌ 重新解析失败: ${data.error}`);
+      }
+    } catch (error: any) {
+      console.error('❌ 请求重新解析API失败:', error);
+      setMessage(`❌ 重新解析失败: ${error.message}`);
+    } finally {
+      // 注意: 不在这里清除parseingId,等进度轮询完成后再清除
+    }
+  };
+
   // 轮询解析进度
   const startProgressPolling = (taskId: string) => {
     console.log('🔄 开始轮询进度, taskId:', taskId);
@@ -507,6 +544,13 @@ function EmailConfigsTab({
                     className="px-3 py-1.5 bg-[#F59E0B]/10 hover:bg-[#F59E0B]/20 text-[#F59E0B] rounded-lg text-[13px] disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     {parseingId === config.id ? '解析中...' : '全量解析'}
+                  </button>
+                  <button 
+                    onClick={() => reparseFailed(config.id)}
+                    disabled={parseingId === config.id}
+                    className="px-3 py-1.5 bg-[#EF4444]/10 hover:bg-[#EF4444]/20 text-[#EF4444] rounded-lg text-[13px] disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {parseingId === config.id ? '解析中...' : '🚨 重新解析失败'}
                   </button>
                 </div>
               </div>
@@ -921,6 +965,7 @@ function ParseResultsTab() {
               <th className="px-4 py-3 text-center text-[#86868B] font-medium">解析结果</th>
               <th className="px-4 py-3 text-left text-[#86868B] font-medium">失败原因</th>
               <th className="px-4 py-3 text-center text-[#86868B] font-medium">记录数</th>
+              <th className="px-4 py-3 text-left text-[#86868B] font-medium">解析时间</th>
             </tr>
           </thead>
           <tbody>
@@ -954,6 +999,16 @@ function ParseResultsTab() {
                 <td className="px-4 py-3 text-center font-mono text-[#0071E3]">
                   {result.recordCount}
                 </td>
+                <td className="px-4 py-3 text-[#86868B] text-xs">
+                  {result.createdAt ? new Date(result.createdAt).toLocaleString('zh-CN', {
+                    month: '2-digit',
+                    day: '2-digit',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    second: '2-digit',
+                    hour12: false
+                  }) : '-'}
+                </td>
               </tr>
             ))}
           </tbody>
@@ -965,29 +1020,12 @@ function ParseResultsTab() {
       </div>
       
       {/* 分页控件 */}
-      {pagination.totalPages > 1 && (
-        <div className="flex items-center justify-between gap-4">
-          <div className="text-[14px] text-[#86868B]">
-            共 {pagination.total} 条记录，第 {pagination.page} / {pagination.totalPages} 页
-          </div>
-          <div className="flex gap-2">
-            <button
-              onClick={() => fetchResults(pagination.page - 1)}
-              disabled={pagination.page <= 1}
-              className="px-4 py-2 bg-[#FFFFFF] border border-[#0000000D] rounded-xl text-[14px] disabled:opacity-50 disabled:cursor-not-allowed hover:bg-[#F5F5F7]"
-            >
-              上一页
-            </button>
-            <button
-              onClick={() => fetchResults(pagination.page + 1)}
-              disabled={pagination.page >= pagination.totalPages}
-              className="px-4 py-2 bg-[#FFFFFF] border border-[#0000000D] rounded-xl text-[14px] disabled:opacity-50 disabled:cursor-not-allowed hover:bg-[#F5F5F7]"
-            >
-              下一页
-            </button>
-          </div>
-        </div>
-      )}
+      <Pagination
+        currentPage={pagination.page}
+        totalPages={pagination.totalPages}
+        total={pagination.total}
+        onPageChange={(page) => fetchResults(page)}
+      />
     </div>
   );
 }
@@ -995,6 +1033,7 @@ function ParseResultsTab() {
 function NavDataTab() {
   const [navData, setNavData] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [exporting, setExporting] = useState(false);
   const [filters, setFilters] = useState({
     productCode: '',
     productName: '',
@@ -1121,6 +1160,105 @@ function NavDataTab() {
     );
   };
 
+  // 🚨 导出CSV功能
+  const exportToCSV = async () => {
+    try {
+      setExporting(true);
+      
+      console.log('📥 开始导出CSV，筛选条件:', filters);
+      
+      // 构建查询参数
+      const params = new URLSearchParams();
+      if (filters.productCode) params.append('productCode', filters.productCode);
+      if (filters.productName) params.append('productName', filters.productName);
+      if (filters.startDate) params.append('startDate', filters.startDate);
+      if (filters.endDate) params.append('endDate', filters.endDate);
+      params.append('page', '1');
+      params.append('pageSize', '100000'); // 获取所有数据
+      
+      const apiUrl = `/api/admin/email/nav?${params.toString()}`;
+      console.log('🔗 请求API:', apiUrl);
+      
+      const response = await fetch(apiUrl);
+      const data = await response.json();
+      
+      console.log('📊 API返回:', { 
+        ok: response.ok, 
+        recordCount: data.navData?.length,
+        hasError: !!data.error 
+      });
+      
+      if (!response.ok) {
+        throw new Error(data.error || '导出失败');
+      }
+      
+      if (!data.navData || data.navData.length === 0) {
+        throw new Error('没有可导出的数据');
+      }
+      
+      // 🚨 转换为CSV格式
+      const headers = ['产品名称', '产品代码', '净值日期', '单位净值', '累计净值', '资产份额', '来源', '置信度'];
+      const csvRows = [
+        headers.join(','),
+        ...data.navData.map((row: any) => {
+          // 🚨 安全地处理日期转换
+          let navDateStr = '';
+          try {
+            if (row.navDate) {
+              const navDate = new Date(row.navDate);
+              if (!isNaN(navDate.getTime())) {
+                navDateStr = navDate.toLocaleDateString('zh-CN');
+              }
+            }
+          } catch (e) {
+            console.warn('日期转换失败:', row.navDate, e);
+          }
+          
+          return [
+            `"${row.productName || ''}"`,
+            row.productCode || '',
+            navDateStr,
+            row.unitNav != null ? row.unitNav.toFixed(4) : '',
+            row.cumulativeNav != null ? row.cumulativeNav.toFixed(4) : '',
+            row.assetShares != null ? row.assetShares : '',
+            row.source || '',
+            row.confidence || '',
+          ].join(',');
+        })
+      ];
+      
+      const csvContent = csvRows.join('\n');
+      console.log('📄 CSV内容长度:', csvContent.length, '字符');
+      
+      // 🚨 修复：使用安全的文件名格式，避免非法字符
+      const now = new Date();
+      const year = now.getFullYear();
+      const month = String(now.getMonth() + 1).padStart(2, '0');
+      const day = String(now.getDate()).padStart(2, '0');
+      const fileName = `净值数据_${year}-${month}-${day}.csv`;
+      
+      console.log('💾 准备下载文件:', fileName);
+      
+      // 创建下载链接
+      const blob = new Blob(['\ufeff' + csvContent], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = fileName;
+      link.click();
+      URL.revokeObjectURL(url);
+      
+      console.log('✅ 导出成功');
+      
+    } catch (error: any) {
+      console.error('❌ 导出失败:', error);
+      console.error('错误堆栈:', error.stack);
+      alert(`导出失败: ${error.message}`);
+    } finally {
+      setExporting(false);
+    }
+  };
+
   if (loading) {
     return <div className="text-center py-8 text-[#86868B]">加载中...</div>;
   }
@@ -1189,6 +1327,13 @@ function NavDataTab() {
         </div>
         
         <div className="flex gap-2 shrink-0">
+          <button
+            onClick={exportToCSV}
+            disabled={exporting || navData.length === 0}
+            className="px-4 py-2 bg-[#16A34A]/10 hover:bg-[#16A34A]/20 text-[#16A34A] rounded-xl text-[14px] font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {exporting ? '导出中...' : '📥 导出CSV'}
+          </button>
           {selectedIds.length > 0 && (
             <button
               onClick={() => showDeleteDialog('selected')}
@@ -1274,29 +1419,12 @@ function NavDataTab() {
       </div>
       
       {/* 分页控件 */}
-      {pagination.totalPages > 1 && (
-        <div className="flex items-center justify-between gap-4">
-          <div className="text-[14px] text-[#86868B]">
-            共 {pagination.total} 条记录，第 {pagination.page} / {pagination.totalPages} 页
-          </div>
-          <div className="flex gap-2">
-            <button
-              onClick={() => fetchNavData(pagination.page - 1)}
-              disabled={pagination.page <= 1}
-              className="px-4 py-2 bg-[#FFFFFF] border border-[#0000000D] rounded-xl text-[14px] disabled:opacity-50 disabled:cursor-not-allowed hover:bg-[#F5F5F7]"
-            >
-              上一页
-            </button>
-            <button
-              onClick={() => fetchNavData(pagination.page + 1)}
-              disabled={pagination.page >= pagination.totalPages}
-              className="px-4 py-2 bg-[#FFFFFF] border border-[#0000000D] rounded-xl text-[14px] disabled:opacity-50 disabled:cursor-not-allowed hover:bg-[#F5F5F7]"
-            >
-              下一页
-            </button>
-          </div>
-        </div>
-      )}
+      <Pagination
+        currentPage={pagination.page}
+        totalPages={pagination.totalPages}
+        total={pagination.total}
+        onPageChange={(page) => fetchNavData(page)}
+      />
     </div>
   );
 }

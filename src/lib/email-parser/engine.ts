@@ -29,6 +29,8 @@ export interface ParseResult {
 export interface ParseOptions {
   fullParse?: boolean; // 是否全量解析
   testLimit?: number; // 测试解析限制数量
+  testEarly?: boolean; // 测试早期邮件（UID最小的N封）而非最新邮件
+  reparseFailed?: boolean; // 🚨 重新解析失败的邮件
 }
 
 /**
@@ -133,6 +135,72 @@ export async function parseEmailConfig(
               result.message = `全量解析完成: 成功 ${result.successCount} 封, 失败 ${result.failedCount} 封, 跳过 ${result.skippedCount} 封`;
               resolve(result);
             });
+          } else if (options?.reparseFailed) {
+            // 🚨 重新解析失败的邮件
+            onProgress?.({
+              progress: 0,
+              total: 0,
+              current: 0,
+              status: 'processing',
+              message: '正在查询失败的解析记录...',
+            });
+            
+            // 从数据库查询失败的emailUid列表
+            const failedResults = await prisma.emailParseResult.findMany({
+              where: { 
+                parseStatus: 'failed',
+                emailConfigId: configId
+              },
+              select: { emailUid: true }
+            });
+            
+            if (!failedResults || failedResults.length === 0) {
+              imap.end();
+              resolve({ success: true, message: '没有失败的邮件需要重新解析', total: 0, processed: 0 });
+              return;
+            }
+            
+            // 转换为数字UID列表
+            const failedUids = failedResults
+              .map(r => parseInt(r.emailUid))
+              .filter(uid => !isNaN(uid));
+            
+            console.log(`🔍 找到 ${failedUids.length} 封失败的邮件，准备重新解析...`);
+            
+            // 获取邮箱中的所有邮件
+            imap.search(['ALL'], async (err: any, allUids: number[]) => {
+              if (err) {
+                imap.end();
+                resolve({ success: false, message: `搜索邮件失败: ${err.message}` });
+                return;
+              }
+              
+              // 过滤出在failedUids中的邮件
+              const uidsToReparse = allUids.filter(uid => failedUids.includes(uid));
+              
+              if (uidsToReparse.length === 0) {
+                imap.end();
+                resolve({ success: true, message: '邮箱中没有找到之前失败的邮件', total: 0, processed: 0 });
+                return;
+              }
+              
+              result.total = uidsToReparse.length;
+              
+              onProgress?.({
+                progress: 0,
+                total: uidsToReparse.length,
+                current: 0,
+                status: 'processing',
+                message: `找到 ${uidsToReparse.length} 封失败的邮件，开始重新解析...`,
+              });
+              
+              await processEmailBatch(imap, uidsToReparse, config.id, configId, result, onProgress);
+              
+              imap.end();
+              result.success = true;
+              result.message = `重新解析完成: 成功 ${result.successCount} 封, 失败 ${result.failedCount} 封, 跳过 ${result.skippedCount} 封`;
+              resolve(result);
+            });
           } else {
             // 测试解析: 只解析最新N封邮件
             if (options?.testLimit) {
@@ -158,8 +226,10 @@ export async function parseEmailConfig(
                   return;
                 }
                 
-                // 取最新的N封(UID越大越新)
-                const sortedUids = allUids.sort((a, b) => b - a);
+                // 取邮件(根据testEarly决定取早期还是最新)
+                const sortedUids = options?.testEarly 
+                  ? allUids.sort((a, b) => a - b)  // 升序，取早期
+                  : allUids.sort((a, b) => b - a); // 降序，取最新
                 const testUids = sortedUids.slice(0, options.testLimit!);
                 
                 result.total = testUids.length;
@@ -182,44 +252,167 @@ export async function parseEmailConfig(
                 resolve(result);
               });
             } else {
-              // 增量解析: 只解析未读邮件
-              searchCriteria.push('UNSEEN');
+              // 🚨 优化1: 增量解析 - 移除UNSEEN条件，避免已读邮件被遗漏
+              // 仅依赖UID范围筛选新邮件
               if (config.lastParsedUid) {
-                searchCriteria.push(['UID', `${config.lastParsedUid}:*`]);
-              }
-              
-              imap.search(searchCriteria, async (err: any, uids: number[]) => {
-                if (err) {
-                  imap.end();
-                  resolve({ success: false, message: `搜索邮件失败: ${err.message}` });
-                  return;
-                }
-                
-                if (!uids || uids.length === 0) {
-                  imap.end();
-                  resolve({ success: true, message: '没有新邮件', total: 0, processed: 0 });
-                  return;
-                }
-                
-                result.total = uids.length;
-                
-                await processEmailBatch(imap, uids, config.id, configId, result, onProgress);
-                
-                // 更新最后解析UID
-                const maxUid = Math.max(...uids);
-                await prisma.emailConfig.update({
-                  where: { id: configId },
-                  data: {
-                    lastParsedAt: new Date(),
-                    lastParsedUid: String(maxUid),
-                  },
+                // 🚨 优化2: UID重置检测 - 防止邮箱清理后失效
+                // 先获取邮箱中最大的UID
+                imap.search(['ALL'], async (err: any, allUids: number[]) => {
+                  if (err) {
+                    imap.end();
+                    resolve({ success: false, message: `搜索邮件失败: ${err.message}` });
+                    return;
+                  }
+                  
+                  if (!allUids || allUids.length === 0) {
+                    imap.end();
+                    resolve({ success: true, message: '邮箱中没有邮件', total: 0, processed: 0 });
+                    return;
+                  }
+                  
+                  const currentMaxUid = Math.max(...allUids);
+                  const lastParsedUidNum = parseInt(config.lastParsedUid || '0');
+                  
+                  // 检测UID是否重置（新邮件的最大UID < 上次解析的UID）
+                  if (currentMaxUid < lastParsedUidNum) {
+                    console.log(`⚠️ 检测到UID重置: 当前最大UID=${currentMaxUid}, 上次解析UID=${lastParsedUidNum}`);
+                    console.log(`🔄 可能邮箱被清理，将重新全量解析...`);
+                    
+                    // 重置lastParsedUid，使用0表示从头开始
+                    await prisma.emailConfig.update({
+                      where: { id: configId },
+                      data: {
+                        lastParsedUid: '0',
+                        lastParsedAt: new Date(),
+                      },
+                    });
+                    
+                    // 使用全量解析逻辑
+                    result.total = allUids.length;
+                    
+                    onProgress?.({
+                      progress: 0,
+                      total: allUids.length,
+                      current: 0,
+                      status: 'processing',
+                      message: `UID重置，重新全量解析 ${allUids.length} 封邮件...`,
+                    });
+                    
+                    await processEmailBatch(imap, allUids, config.id, configId, result, onProgress);
+                    
+                    // 更新lastParsedUid
+                    await prisma.emailConfig.update({
+                      where: { id: configId },
+                      data: {
+                        lastParsedAt: new Date(),
+                        lastParsedUid: String(currentMaxUid),
+                      },
+                    });
+                    
+                    imap.end();
+                    result.success = true;
+                    result.message = `UID重置后全量解析完成: 成功 ${result.successCount} 封, 失败 ${result.failedCount} 封, 跳过 ${result.skippedCount} 封`;
+                    resolve(result);
+                    return;
+                  }
+                  
+                  // UID正常，执行增量解析
+                  const searchCriteria: any[] = [];
+                  searchCriteria.push(['UID', `${lastParsedUidNum}:*`]);
+                  
+                  imap.search(searchCriteria, async (err: any, uids: number[]) => {
+                    if (err) {
+                      imap.end();
+                      resolve({ success: false, message: `搜索邮件失败: ${err.message}` });
+                      return;
+                    }
+                    
+                    if (!uids || uids.length === 0) {
+                      imap.end();
+                      resolve({ success: true, message: '没有新邮件', total: 0, processed: 0 });
+                      return;
+                    }
+                    
+                    // 🚨 过滤掉UID=0的邮件（如果有的话）
+                    const newUids = uids.filter(uid => uid > 0);
+                    
+                    if (newUids.length === 0) {
+                      imap.end();
+                      resolve({ success: true, message: '没有新邮件', total: 0, processed: 0 });
+                      return;
+                    }
+                    
+                    result.total = newUids.length;
+                    
+                    onProgress?.({
+                      progress: 0,
+                      total: newUids.length,
+                      current: 0,
+                      status: 'processing',
+                      message: `找到 ${newUids.length} 封新邮件（UID: ${Math.min(...newUids)}-${Math.max(...newUids)}）`,
+                    });
+                    
+                    await processEmailBatch(imap, newUids, config.id, configId, result, onProgress);
+                    
+                    // 更新最后解析UID
+                    const maxUid = Math.max(...newUids);
+                    await prisma.emailConfig.update({
+                      where: { id: configId },
+                      data: {
+                        lastParsedAt: new Date(),
+                        lastParsedUid: String(maxUid),
+                      },
+                    });
+                    
+                    imap.end();
+                    result.success = true;
+                    result.message = `增量解析完成: 成功 ${result.successCount} 封, 失败 ${result.failedCount} 封, 跳过 ${result.skippedCount} 封`;
+                    resolve(result);
+                  });
                 });
-                
-                imap.end();
-                result.success = true;
-                result.message = `增量解析完成: 成功 ${result.successCount} 封, 失败 ${result.failedCount} 封, 跳过 ${result.skippedCount} 封`;
-                resolve(result);
-              });
+              } else {
+                // 首次解析，没有lastParsedUid，执行全量解析
+                imap.search(['ALL'], async (err: any, allUids: number[]) => {
+                  if (err) {
+                    imap.end();
+                    resolve({ success: false, message: `搜索邮件失败: ${err.message}` });
+                    return;
+                  }
+                  
+                  if (!allUids || allUids.length === 0) {
+                    imap.end();
+                    resolve({ success: true, message: '邮箱中没有邮件', total: 0, processed: 0 });
+                    return;
+                  }
+                  
+                  result.total = allUids.length;
+                  
+                  onProgress?.({
+                    progress: 0,
+                    total: allUids.length,
+                    current: 0,
+                    status: 'processing',
+                    message: `首次解析，全量解析 ${allUids.length} 封邮件...`,
+                  });
+                  
+                  await processEmailBatch(imap, allUids, config.id, configId, result, onProgress);
+                  
+                  // 更新lastParsedUid
+                  const maxUid = Math.max(...allUids);
+                  await prisma.emailConfig.update({
+                    where: { id: configId },
+                    data: {
+                      lastParsedAt: new Date(),
+                      lastParsedUid: String(maxUid),
+                    },
+                  });
+                  
+                  imap.end();
+                  result.success = true;
+                  result.message = `首次全量解析完成: 成功 ${result.successCount} 封, 失败 ${result.failedCount} 封, 跳过 ${result.skippedCount} 封`;
+                  resolve(result);
+                });
+              }
             }
           }
         } catch (error: any) {
@@ -317,7 +510,7 @@ async function processSingleEmail(
             const parsed = await simpleParser(buffer);
             
             const subject = parsed.subject || '';
-            const from = parsed.from?.text || '';
+            const from = parsed.from ? (typeof parsed.from === 'string' ? parsed.from : (parsed.from.value && parsed.from.value[0] ? parsed.from.value[0].address || '' : '')) : '';
             const date = parsed.date || new Date();
             
             // 记录邮件基本信息
@@ -439,6 +632,13 @@ async function processSingleEmail(
                   console.log(`⚠️ HTML数据无法落库，准备回退到Excel附件\n`);
                   savedRows = []; // 清空，准备尝试Excel
                   htmlParsed = false; // 🚨 标记HTML解析实际失败
+                  
+                  // 🚨 修复1: 记录HTML缺少unitNav的信息，便于调试
+                  const firstRow = htmlRows[0];
+                  console.log(`🔍 HTML数据字段: ${Object.keys(firstRow).join(', ')}`);
+                  if (!firstRow.unitNav && !firstRow['单位净值']) {
+                    console.log(`⚠️ HTML缺少unitNav字段，这是回退到Excel的主要原因`);
+                  }
                 }
               } else {
                 // 🚨 修复: HTML解析但未提取到数据,标记为失败以便回退Excel
@@ -450,8 +650,43 @@ async function processSingleEmail(
             }
             
             // 🚨 策略2: 如果HTML解析失败或无法落库,尝试Excel附件
-            if (savedRows.length === 0 && parsed.attachments && parsed.attachments.length > 0) {
-              console.log(`📎 HTML无法落库，尝试解析 ${parsed.attachments.length} 个附件`);
+            // 🚨 优化1: 增强回退逻辑 - 提前检测unitNav缺失
+            
+            // 🚨 优化1.1: 提前计算emptyNavCount（在Excel回退之前）
+            let earlyEmptyNavCount = 0;
+            if (savedRows.length > 0) {
+              for (const row of savedRows) {
+                const mapped = mapRowFields(row);
+                const unitNavStr = mapped.unitNav?.trim();
+                if (!unitNavStr) {
+                  earlyEmptyNavCount++;
+                }
+              }
+            }
+            
+            // 🚨 优化1.2: 增强Excel回退触发条件
+            // 旧条件: savedRows.length === 0（仅当HTML没有提取到数据）
+            // 新条件: 满足以下任一条件且有附件时触发
+            //   1. HTML没有提取到数据
+            //   2. HTML提取了数据但无法落库（validateRowsCanSave = 0）
+            //   3. HTML提取了数据但缺少unitNav（earlyEmptyNavCount > 0）
+            
+            const htmlDataInvalid = savedRows.length === 0;
+            const htmlDataUnsavable = savedRows.length > 0 && validateRowsCanSave(savedRows) === 0;
+            const htmlMissingUnitNav = savedRows.length > 0 && earlyEmptyNavCount > 0;
+            
+            if ((htmlDataInvalid || htmlDataUnsavable || htmlMissingUnitNav) && 
+                parsed.attachments && parsed.attachments.length > 0) {
+              
+              const reason = htmlDataInvalid ? '没有提取到数据' :
+                            htmlDataUnsavable ? '数据无法落库' :
+                            htmlMissingUnitNav ? `缺少unitNav(${earlyEmptyNavCount}/${savedRows.length}行)` : '未知';
+              
+              console.log(`📎 HTML数据无法落库，尝试解析 ${parsed.attachments.length} 个Excel附件`);
+              console.log(`   原因: ${reason}`);
+              console.log(`   savedRows=${savedRows.length}, canSave=${validateRowsCanSave(savedRows)}, emptyNav=${earlyEmptyNavCount}`);
+              
+              // 如果HTML提取了数据但无法落库，强制尝试Excel
               for (const attachment of parsed.attachments) {
                 // 检查是否为Excel文件
                 const filename = attachment.filename || '';
@@ -490,8 +725,37 @@ async function processSingleEmail(
                       
                       // 🚨 验证Excel数据是否能落库
                       console.log(`\n🔍 验证Excel数据是否能落库...`);
-                      const canSaveCount = validateRowsCanSave(navSheet.rows);
+                      let canSaveCount = validateRowsCanSave(navSheet.rows);
                       console.log(`📊 Excel数据验证结果: ${canSaveCount}/${navSheet.rows.length} 行可以落库`);
+                      
+                      // 🚨 修复: 如果验证失败，检查是否因为productCode为空
+                      if (canSaveCount === 0 && navSheet.rows.length > 0) {
+                        const firstRow = navSheet.rows[0];
+                        const hasProductCode = firstRow['productCode'] || firstRow['产品代码'] || firstRow['资产代码'] || firstRow['基金代码'];
+                        
+                        if (!hasProductCode || (typeof hasProductCode === 'string' && hasProductCode.trim() === '')) {
+                          console.log(`⚠️ Excel中产品代码为空，尝试从主题补充...`);
+                          
+                          // 从主题提取产品代码
+                          const productCodeMatch = subject.match(/([A-Z]{2,6}\d+[A-Z]*)/);
+                          
+                          if (productCodeMatch) {
+                            const extractedCode = productCodeMatch[1];
+                            console.log(`✅ 从主题提取产品代码: ${extractedCode}`);
+                            
+                            // 填充到所有行
+                            navSheet.rows.forEach(row => {
+                              row['productCode'] = extractedCode;
+                            });
+                            
+                            // 重新验证
+                            canSaveCount = validateRowsCanSave(navSheet.rows);
+                            console.log(`📊 重新验证结果: ${canSaveCount}/${navSheet.rows.length} 行可以落库`);
+                          } else {
+                            console.log(`⚠️ 无法从主题提取产品代码`);
+                          }
+                        }
+                      }
                       
                       if (canSaveCount > 0) {
                         // 先收集数据,稍后统一保存
@@ -571,7 +835,7 @@ async function processSingleEmail(
                   const underscoreParts = subject.split('_');
                   for (const part of underscoreParts) {
                     if (/[\u4e00-\u9fa5]{2,}(?:私募|基金|证券|投资)/.test(part)) {
-                      productNameMatch = [null, part.trim()];
+                      productNameMatch = ['', part.trim()];
                       break;
                     }
                   }
@@ -695,7 +959,8 @@ async function processSingleEmail(
               navDataSavedCount = await saveNavDataWithResultId(savedRows, source);
             }
             
-            // 根据实际落库数量判定成功/失败
+            // 🚨 修复: 根据实际落库数量判定成功/失败
+            // 之前允许空净值导致44.84%的净值数据为空
             const actualSuccessCount = navDataSavedCount;
             const parseStatus = actualSuccessCount > 0 ? 'success' : 'failed';
             
@@ -706,6 +971,22 @@ async function processSingleEmail(
                 finalErrorReason = '未提取到数据行(recordCount=0)';
               } else if (savedRows.length > 0 && navDataSavedCount === 0) {
                 finalErrorReason = `数据清洗失败(提取${savedRows.length}行,落库0行)`;
+              }
+            }
+            
+            // 🚨 新增: 检测空净值问题并统计
+            let emptyNavCount = 0;
+            if (savedRows.length > 0) {
+              for (const row of savedRows) {
+                const mapped = mapRowFields(row);
+                const unitNavStr = mapped.unitNav?.trim();
+                if (!unitNavStr) {
+                  emptyNavCount++;
+                }
+              }
+              
+              if (emptyNavCount > 0) {
+                console.log(`⚠️  检测到空净值: ${emptyNavCount}/${savedRows.length} 行缺少unitNav`);
               }
             }
             
@@ -720,6 +1001,7 @@ async function processSingleEmail(
               mappedRows: [], // 映射后的数据
               cleanIssues: [], // 清洗问题
               savedCount: navDataSavedCount,
+              emptyNavCount, // 🚨 新增: 空净值数量
             };
             
             // 创建解析结果记录

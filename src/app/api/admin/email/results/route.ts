@@ -38,22 +38,53 @@ export async function GET(request: Request) {
       }
     }
     
-    const [results, total] = await Promise.all([
-      prisma.emailParseResult.findMany({
-        where,
-        orderBy: { receivedAt: 'desc' },
-        skip: (page - 1) * pageSize,
-        take: pageSize,
-        include: {
-          emailConfig: {
-            select: {
-              email: true,
-            },
+    // 🚨 修复：先获取所有匹配的记录，再统计DISTINCT emailUid
+    const results = await prisma.emailParseResult.findMany({
+      where,
+      orderBy: { receivedAt: 'desc' },
+      skip: (page - 1) * pageSize,
+      take: pageSize,
+      include: {
+        emailConfig: {
+          select: {
+            email: true,
           },
         },
-      }),
-      prisma.emailParseResult.count({ where }),
-    ]);
+      },
+    });
+    
+    // 🚨 使用原始SQL统计DISTINCT emailUid
+    let whereClause = '';
+    const params: any[] = [];
+    
+    if (parseStatus) {
+      whereClause += ` WHERE "parseStatus" = $${params.length + 1}`;
+      params.push(parseStatus);
+    }
+    
+    if (emailConfigId) {
+      whereClause += whereClause ? ` AND "emailConfigId" = $${params.length + 1}` : ` WHERE "emailConfigId" = $${params.length + 1}`;
+      params.push(parseInt(emailConfigId));
+    }
+    
+    if (startDate || endDate) {
+      if (startDate && endDate) {
+        whereClause += whereClause ? ` AND "receivedAt" BETWEEN $${params.length + 1} AND $${params.length + 2}` : ` WHERE "receivedAt" BETWEEN $${params.length + 1} AND $${params.length + 2}`;
+        params.push(new Date(startDate), new Date(endDate));
+      } else if (startDate) {
+        whereClause += whereClause ? ` AND "receivedAt" >= $${params.length + 1}` : ` WHERE "receivedAt" >= $${params.length + 1}`;
+        params.push(new Date(startDate));
+      } else if (endDate) {
+        whereClause += whereClause ? ` AND "receivedAt" <= $${params.length + 1}` : ` WHERE "receivedAt" <= $${params.length + 1}`;
+        params.push(new Date(endDate));
+      }
+    }
+    
+    const uniqueCountResult = await prisma.$queryRawUnsafe(
+      `SELECT COUNT(DISTINCT "emailUid") as count FROM EmailParseResult${whereClause}`,
+      ...params
+    );
+    const total = Number((uniqueCountResult as any)[0].count);
     
     return NextResponse.json({
       results,
@@ -76,41 +107,38 @@ export async function GET(request: Request) {
 // 统计API实现
 async function getStatistics() {
   try {
-    // 获取总数
-    const totalCount = await (prisma as any).emailParseResult.count();
+    // 🚨 修复：使用DISTINCT emailUid统计唯一邮件数，避免重复计算
+    const uniqueStats = await prisma.$queryRaw`
+      SELECT 
+        COUNT(DISTINCT "emailUid") as total,
+        COUNT(DISTINCT CASE WHEN "parseStatus" = 'success' THEN "emailUid" END) as success,
+        COUNT(DISTINCT CASE WHEN "parseStatus" = 'failed' THEN "emailUid" END) as failed,
+        COUNT(DISTINCT CASE WHEN "parseStatus" = 'skipped' THEN "emailUid" END) as skipped
+      FROM EmailParseResult
+    `;
     
-    // 按状态统计
-    const successCount = await (prisma as any).emailParseResult.count({
-      where: { parseStatus: 'success' },
-    });
-    
-    const failedCount = await (prisma as any).emailParseResult.count({
-      where: { parseStatus: 'failed' },
-    });
-    
-    const skippedCount = await (prisma as any).emailParseResult.count({
-      where: { parseStatus: 'skipped' },
-    });
+    const totalCount = Number((uniqueStats as any)[0].total);
+    const successCount = Number((uniqueStats as any)[0].success);
+    const failedCount = Number((uniqueStats as any)[0].failed);
+    const skippedCount = Number((uniqueStats as any)[0].skipped);
     
     // 计算百分比
     const totalPercent = totalCount > 0 ? ((successCount / totalCount) * 100).toFixed(2) : '0.00';
     const failedPercent = totalCount > 0 ? ((failedCount / totalCount) * 100).toFixed(2) : '0.00';
     const skippedPercent = totalCount > 0 ? ((skippedCount / totalCount) * 100).toFixed(2) : '0.00';
     
-    // 获取失败原因Top 5
-    const allFailed = await (prisma as any).emailParseResult.findMany({
-      where: { 
-        parseStatus: 'failed',
-        errorReason: { not: null }
-      },
-      select: { errorReason: true },
-    });
+    // 🚨 修复：获取失败原因时也使用DISTINCT emailUid
+    const allFailed = await prisma.$queryRaw`
+      SELECT DISTINCT "emailUid", "errorReason"
+      FROM EmailParseResult
+      WHERE "parseStatus" = 'failed' AND "errorReason" IS NOT NULL AND "errorReason" != ''
+    `;
     
     // 过滤空字符串并统计失败原因
     const reasonMap: Record<string, number> = {};
-    allFailed.forEach((r: any) => {
-      if (r.errorReason && r.errorReason.trim()) {
-        reasonMap[r.errorReason] = (reasonMap[r.errorReason] || 0) + 1;
+    (allFailed as any[]).forEach((r: any) => {
+      if (r.error_reason && r.error_reason.trim()) {
+        reasonMap[r.error_reason] = (reasonMap[r.error_reason] || 0) + 1;
       }
     });
     
@@ -130,7 +158,7 @@ async function getStatistics() {
       skippedPercent: parseFloat(skippedPercent),
       topFailureReasons,
     });
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error getting statistics:', error);
     return NextResponse.json(
       { error: '获取统计数据失败' },

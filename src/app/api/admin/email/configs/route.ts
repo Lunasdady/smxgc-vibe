@@ -1,8 +1,12 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/db';
 import { encrypt } from '@/lib/email-parser/crypto';
+import { ensureEmailParserInitialized } from '@/lib/email-parser/init';
 
 export async function GET() {
+  // 确保邮件解析系统已初始化（只执行一次）
+  await ensureEmailParserInitialized();
+  
   try {
     const configs = await prisma.emailConfig.findMany({
       orderBy: { createdAt: 'desc' },

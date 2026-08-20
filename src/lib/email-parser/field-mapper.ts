@@ -69,6 +69,13 @@ export const FIELD_ALIASES: Record<string, string> = {
   '单位净值：': 'unitNav',
   '净值情况': 'unitNav',  // 🚨 SVU833等特殊表格
   
+  // === 资产份额字段（新增）===
+  '资产份额': 'assetShares',  // 🚨 不要映射到unitNav！
+  '总资产份额': 'assetShares',
+  '份额': 'assetShares',
+  'Shares': 'assetShares',
+  'Asset Shares': 'assetShares',
+  
   // === 累计净值字段 (11个别名) ===
   '累计净值': 'cumulativeNav',
   '累计单位净值': 'cumulativeNav',
@@ -81,6 +88,12 @@ export const FIELD_ALIASES: Record<string, string> = {
   '累计净值：': 'cumulativeNav',
   '累计单位净值：': 'cumulativeNav',
   '累积净值': 'cumulativeNav',
+  
+  // === 资产净值字段（新增）===
+  '资产净值': 'totalNav',  // 总资产净值
+  '总资产净值': 'totalNav',
+  'Total NAV': 'totalNav',
+  'Net Assets': 'totalNav',
 };
 
 /**
@@ -153,7 +166,7 @@ function normalizeSimpleField(fieldName: string): string | null {
   cleaned = cleaned.replace(/[（(].*?[）)]/g, '').trim();
   
   // 🚨 排除明显不是净值字段的词汇
-  const excludeKeywords = ['净值情况', '情况', '浏览表', '专用表', '账套名称', '声明', '备注', '资产净值', '资产份额'];
+  const excludeKeywords = ['净值情况', '情况', '浏览表', '专用表', '账套名称', '声明', '备注'];
   if (excludeKeywords.some(kw => cleaned.includes(kw))) {
     return null;
   }
@@ -191,14 +204,14 @@ function normalizeSimpleField(fieldName: string): string | null {
 export function mapRowFields(row: Record<string, string>): Record<string, string> {
   const mapped: Record<string, string> = {};
   
-  // 🚨 定义字段优先级: productCode > productName > unitNav > cumulativeNav > navDate
+  // 🚨 定义字段优先级: productCode > productName > navDate > unitNav > cumulativeNav
   // 优先级高的字段一旦映射,就不能被优先级低的覆盖
   const fieldPriority: Record<string, number> = {
     productCode: 5,
     productName: 4,
-    unitNav: 3,
-    cumulativeNav: 2,
-    navDate: 1,
+    navDate: 3,
+    unitNav: 2,      // 🚨 降低优先级，避免"资产份额"误映射
+    cumulativeNav: 1,
   };
   
   for (const [key, value] of Object.entries(row)) {

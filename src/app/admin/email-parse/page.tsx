@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import Pagination from '@/components/Pagination';
+import AdminTabs from '@/app/admin/_components/AdminTabs';
 
 export default function EmailParsePage() {
   const [activeTab, setActiveTab] = useState<'configs' | 'results' | 'nav'>('configs');
@@ -58,8 +59,18 @@ export default function EmailParsePage() {
         </div>
       </header>
 
+      {/* 🚨 固定定位的管理后台Tab导航 */}
+      <div className="sticky top-[57px] z-20 bg-[#F5F5F7]/80 backdrop-blur-lg py-3">
+        <div className="max-w-7xl mx-auto px-6">
+          <div className="flex justify-center">
+            <AdminTabs />
+          </div>
+        </div>
+      </div>
+
       <main className="max-w-7xl mx-auto p-6 space-y-6">
-        {/* Tab切换 */}
+        
+        {/* 邮件解析内部Tab切换 */}
         <div className="flex gap-2 border-b border-[#0000000D]">
           <button
             onClick={() => setActiveTab('configs')}

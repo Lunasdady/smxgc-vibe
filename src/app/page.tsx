@@ -61,12 +61,17 @@ export default function HomePage() {
     const fetchData = async () => {
       setLoading(true);
       try {
+        console.log('[Home] 请求API:', `/api/strategies/overview?dataDate=${dataDate}&metric=${metric}`);
         const response = await fetch(
           `/api/strategies/overview?dataDate=${dataDate}&metric=${metric}`,
           { signal: controller.signal }
         );
         const data = await response.json();
-        console.log('[Home] 数据加载成功:', { count: data.strategies?.length || 0 });
+        console.log('[Home] 数据加载成功:', { 
+          count: data.strategies?.length || 0,
+          firstStrategy: data.strategies?.[0]?.strategyName,
+          totalProducts: data.strategies?.reduce((sum: number, s: any) => sum + s.count, 0) || 0
+        });
         setStrategies(data.strategies || []);
       } catch (error: any) {
         if (error.name !== 'AbortError') {

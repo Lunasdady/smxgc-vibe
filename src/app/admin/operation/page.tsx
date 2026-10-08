@@ -293,11 +293,16 @@ tr:hover{background:#fafafa}
         </div>
       </header>
 
-      <main className="max-w-[1200px] mx-auto px-6 lg:px-8 py-8" ref={reportRef}>
-        {/* Tabs */}
-        <div className="flex justify-center mb-8">
-          <AdminTabs />
+      {/* 🚨 固定定位的管理后台Tab导航 */}
+      <div className="sticky top-[56px] z-20 bg-[#F5F5F7]/80 backdrop-blur-lg py-3">
+        <div className="max-w-[1200px] mx-auto px-6 lg:px-8">
+          <div className="flex justify-center">
+            <AdminTabs />
+          </div>
         </div>
+      </div>
+
+      <main className="max-w-[1200px] mx-auto px-6 lg:px-8 py-8" ref={reportRef}>
 
         {/* 时间范围选择 */}
         <div className="flex items-center justify-between mb-6">

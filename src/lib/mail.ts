@@ -1,16 +1,80 @@
 import nodemailer from 'nodemailer';
+import prisma from './db';
+import { decrypt, isEncrypted } from './crypto';
 
-const transporter = nodemailer.createTransport({
-  host: process.env.SMTP_HOST || 'smtp.163.com',
-  port: Number(process.env.SMTP_PORT) || 465,
-  secure: true,
-  auth: {
-    user: process.env.SMTP_USER || 'smxgc_nav_sever@163.com',
-    pass: process.env.SMTP_PASS || '',
-  },
-});
+/**
+ * 从AppConfig获取SMTP配置
+ */
+async function getSmtpConfig() {
+  const keys = ['smtpHost', 'smtpPort', 'smtpUser', 'smtpPass', 'smtpFromName', 'smtpSecure'];
+
+  const configs = await prisma.appConfig.findMany({
+    where: { key: { in: keys } },
+  });
+
+  const map: Record<string, string> = {};
+  for (const c of configs) {
+    map[c.key] = c.value;
+  }
+
+  // 解密密码（如果已加密）
+  let pass = map.smtpPass || process.env.SMTP_PASS || '';
+  if (pass && isEncrypted(pass)) {
+    pass = decrypt(pass);
+  }
+
+  // 回退到环境变量或默认值
+  const host = map.smtpHost || process.env.SMTP_HOST || 'smtp.163.com';
+  const port = parseInt(map.smtpPort || process.env.SMTP_PORT || '465');
+  const user = map.smtpUser || process.env.SMTP_USER || '';
+  const fromName = map.smtpFromName || '私募星工厂';
+  const secure = (map.smtpSecure !== 'false');
+
+  return { host, port, user, pass, fromName, secure };
+}
+
+/**
+ * 创建邮件传输器（每次发送时动态创建，支持配置变更）
+ */
+export async function createTransporter(customConfig?: {
+  host: string;
+  port: number;
+  user: string;
+  pass: string;
+  fromName: string;
+  secure: boolean;
+}) {
+  const config = customConfig || await getSmtpConfig();
+
+  if (!config.user || !config.pass) {
+    throw new Error('SMTP邮箱或密码未配置，请在管理后台完成配置');
+  }
+
+  return nodemailer.createTransport({
+    host: config.host,
+    port: config.port,
+    secure: config.secure,
+    auth: {
+      user: config.user,
+      pass: config.pass,
+    },
+  });
+}
+
+/**
+ * 获取发件人地址
+ */
+async function getFromAddress() {
+  const config = await getSmtpConfig();
+  return `"${config.fromName}" <${config.user}>`;
+}
 
 export async function sendVerificationEmail(to: string, code: string, type: 'register' | 'forgot-password') {
+  const [transporter, from] = await Promise.all([
+    createTransporter(),
+    getFromAddress(),
+  ]);
+
   const subject = type === 'register' ? '私募星工厂 - 注册验证码' : '私募星工厂 - 密码重置验证码';
   const text = type === 'register'
     ? `您好，欢迎注册私募星工厂！\n\n您的验证码是：${code}\n\n验证码5分钟内有效，请勿泄露给他人。\n\n如非本人操作，请忽略此邮件。`
@@ -35,7 +99,7 @@ export async function sendVerificationEmail(to: string, code: string, type: 'reg
     </div>`;
 
   await transporter.sendMail({
-    from: `"私募星工厂" <${process.env.SMTP_USER || 'smxgc_nav_sever@163.com'}>`,
+    from,
     to,
     subject,
     text,
@@ -44,6 +108,11 @@ export async function sendVerificationEmail(to: string, code: string, type: 'reg
 }
 
 export async function sendApprovalEmail(to: string, realName: string) {
+  const [transporter, from] = await Promise.all([
+    createTransporter(),
+    getFromAddress(),
+  ]);
+
   const loginUrl = 'http://122.51.51.46/login';
   const subject = '私募星工厂 - 您的账户已通过审核';
   const text = `尊敬的 ${realName}，您好！\n\n您的私募星工厂账户已完成审核，策略详情访问权限已开通。\n\n您现在可以访问：\n- 首页概况数据\n- 各策略类型详情页（指增、CTA、套利、复合等）\n- 产品周度数据与分组汇总\n\n请使用注册时的邮箱和密码登录系统。\n登录地址：${loginUrl}\n\n如有任何问题，请联系管理员。\n感谢您对私募星工厂的支持！`;
@@ -75,7 +144,7 @@ export async function sendApprovalEmail(to: string, realName: string) {
   </div>`;
 
   await transporter.sendMail({
-    from: `"私募星工厂" <${process.env.SMTP_USER || 'smxgc_nav_sever@163.com'}>`,
+    from,
     to,
     subject,
     text,

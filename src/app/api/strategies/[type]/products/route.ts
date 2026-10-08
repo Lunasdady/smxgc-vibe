@@ -59,37 +59,77 @@ export async function GET(
       else if (strategyType === 'quantitative-futures') actualStrategyType = 'quantitative-cta';
     }
 
-    // 构建查询条件
-    const where: any = {
-      dataDate: new Date(dataDate),
-      strategyType: actualStrategyType,
-    };
+    // 将日期转为 Unix 时间戳（毫秒），因为数据库中 dataDate 存的是整数
+    const targetTimestamp = new Date(dataDate + 'T00:00:00.000Z').getTime();
 
+    // 构建 WHERE 条件
+    let whereClause = `WHERE dataDate = ${targetTimestamp} AND strategyType = '${actualStrategyType}'`;
     if (search) {
-      where.fundManager = {
-        contains: search,
-      };
+      whereClause += ` AND fundManager LIKE '%${search.replace(/'/g, "''")}%'`;
     }
 
-    // 构建排序
-    const orderBy: any = {};
-    orderBy[sortBy] = order;
-
     // 查询总数
-    const total = await prisma.fundProduct.count({ where });
+    const countResult = await prisma.$queryRawUnsafe<{ count: bigint }[]>(
+      `SELECT COUNT(*) as count FROM FundProduct ${whereClause}`
+    );
+    const total = Number(countResult[0]?.count || 0);
 
-    // 查询数据
-    const products = await prisma.fundProduct.findMany({
-      where,
-      orderBy,
-      skip: (page - 1) * limit,
-      take: limit,
-    });
+    // 查询数据（使用 raw SQL 排序和分页）
+    const products = await prisma.$queryRawUnsafe<any[]>(
+      `SELECT * FROM FundProduct ${whereClause} ORDER BY "${sortBy}" ${order === 'desc' ? 'DESC' : 'ASC'} LIMIT ${limit} OFFSET ${(page - 1) * limit}`
+    );
+
+    // 为每个产品添加productCode和strategyCategory（通过产品名称关联StrategyMapping）
+    const productsWithCode = await Promise.all(
+      products.map(async (product) => {
+        // 查找匹配的StrategyMapping记录
+        const mapping = await prisma.strategyMapping.findFirst({
+          where: {
+            productName: product.productName,
+          },
+          select: {
+            productCode: true,
+            secondaryStrategy: true,
+          },
+        });
+
+        return {
+          ...product,
+          productCode: mapping?.productCode || null,
+          strategyCategory: mapping?.secondaryStrategy || product.strategyCategory || '-',
+        };
+      })
+    );
+
+    // 指增策略超额收益字段回退：当 excess 字段为空时，使用对应的绝对收益字段
+    const indexEnhancedTypes = ['index-enhanced-300', 'index-enhanced-500', 'index-enhanced-1000', 'index-enhanced-2000', 'index-enhanced-alternative'];
+    const isIndexEnhanced = indexEnhancedTypes.includes(strategyType);
+    const needsFallback = isIndexEnhanced && date >= new Date('2026-07-08');
+
+    if (needsFallback) {
+      const fallbackMap: Record<string, string> = {
+        excessReturn1w: 'weeklyReturn',
+        excessReturn3m: 'monthlyReturn',
+        excessReturnYtd: 'ytdReturn',
+        excessAnnualizedReturn: 'annualizedReturnSinceInception',
+        excessYtdMaxDrawdown: 'ytdMaxDrawdown',
+        excessInceptionMaxDrawdown: 'inceptionMaxDrawdown',
+        excessAnnualizedVolatility: 'annualizedVolatility',
+        excessSharpeRatio: 'sharpeRatio',
+      };
+      for (const product of productsWithCode) {
+        for (const [newField, oldField] of Object.entries(fallbackMap)) {
+          if ((product[newField] === null || product[newField] === undefined) && product[oldField] !== null && product[oldField] !== undefined) {
+            product[newField] = product[oldField];
+          }
+        }
+      }
+    }
 
     const totalPages = Math.ceil(total / limit);
 
     return NextResponse.json({
-      products,
+      products: productsWithCode,
       total,
       page,
       limit,

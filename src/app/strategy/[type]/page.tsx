@@ -8,7 +8,8 @@ import { formatValue } from '@/lib/stats';
 import DateSelector from '@/components/DateSelector';
 import MetricSelector from '@/components/MetricSelector';
 import Navbar from '@/components/Navbar';
-import { Search, ChevronLeft, ChevronRight, ArrowUpDown, Maximize2, Minimize2, X } from 'lucide-react';
+import { Search, ChevronLeft, ChevronRight, ArrowUpDown, Maximize2, Minimize2, X, TrendingUp } from 'lucide-react';
+import TrendTooltip from '@/components/TrendTooltip';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useScrollReveal } from '@/hooks/useScrollReveal';
@@ -336,6 +337,8 @@ export default function StrategyPage({ params }: StrategyPageProps) {
                           {col.label}
                         </SortableHeader>
                       ))}
+                      {/* 走势列 - 仅桌面端 */}
+                      <th className="px-5 py-3 text-center text-[13px] font-medium text-[#86868B] whitespace-nowrap hidden md:table-cell">走势</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -353,6 +356,21 @@ export default function StrategyPage({ params }: StrategyPageProps) {
                             {renderCell(product[col.key] as number, col.key !== 'sharpeRatio' && col.key !== 'excessSharpeRatio' && col.key !== 'karmaRatio')}
                           </td>
                         ))}
+                        {/* 走势列 - 仅桌面端 */}
+                        <td className="px-5 py-3 text-center whitespace-nowrap hidden md:table-cell">
+                          {product.productCode ? (
+                            <TrendTooltip 
+                              productCode={product.productCode}
+                              productName={product.productName}
+                            >
+                              <button className="p-2 rounded-lg hover:bg-[#0071E3]/10 transition-all group">
+                                <TrendingUp className="w-4 h-4 text-[#0071E3] group-hover:scale-110 transition-transform" />
+                              </button>
+                            </TrendTooltip>
+                          ) : (
+                            <span className="text-[#A1A1A6]">-</span>
+                          )}
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -424,7 +442,7 @@ export default function StrategyPage({ params }: StrategyPageProps) {
       {isTableFullscreen && createPortal(
         <div className="fixed inset-0 z-[100] bg-[#F5F5F7] overflow-auto">
           <div className="sticky top-0 z-10 glass-card border-b border-[#0000000D] backdrop-blur-xl bg-[#F5F5F7]/90">
-            <div className="max-w-[1400px] mx-auto px-6 lg:px-8 py-4 flex items-center justify-between">
+            <div className="px-6 lg:px-8 py-4 flex items-center justify-between">
               <div>
                 <h2 className="text-[20px] font-semibold text-[#1D1D1F] tracking-tight">{strategyName} - 产品明细</h2>
                 <p className="text-[13px] text-[#86868B] mt-1">{filteredProducts.length} 只产品 · {currentMetric.label}</p>
@@ -454,42 +472,55 @@ export default function StrategyPage({ params }: StrategyPageProps) {
             </div>
           </div>
 
-          <div className="max-w-[1800px] mx-auto px-4 lg:px-6 py-6">
-            <div className="glass-card rounded-3xl overflow-hidden shadow-apple">
-              <div className="overflow-x-auto" style={{ minWidth: '1400px' }}>
-                <table className="w-full">
-                  <thead className="bg-[#00000004]">
-                    <tr>
-                      <th className="px-5 py-3 text-left text-[13px] font-medium text-[#86868B] whitespace-nowrap">基金管理人</th>
-                      <th className="px-5 py-3 text-left text-[13px] font-medium text-[#86868B] whitespace-nowrap">管理人规模</th>
-                      <th className="px-5 py-3 text-left text-[13px] font-medium text-[#86868B] whitespace-nowrap sticky left-0 z-10 bg-[#FAFAFB]">产品名称</th>
-                      <th className="px-5 py-3 text-left text-[13px] font-medium text-[#86868B] whitespace-nowrap">策略分类</th>
-                      {DATA_COLUMNS.map((col) => (
-                        <th key={col.key} className="px-5 py-3 text-right text-[13px] font-medium text-[#86868B] whitespace-nowrap">{col.label}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredProducts.map((product) => (
-                      <tr
-                        key={product.id}
-                        className="border-b border-[#00000008] hover:bg-[#0071E3]/[0.02] transition-all duration-200"
-                      >
-                        <td className="px-5 py-3 text-[14px] text-[#1D1D1F] whitespace-nowrap">{product.fundManager}</td>
-                        <td className="px-5 py-3 text-[14px] text-[#86868B] whitespace-nowrap">{product.managerScale}</td>
-                        <td className="px-5 py-3 text-[14px] text-[#1D1D1F] font-medium whitespace-nowrap sticky left-0 z-10 bg-white">{product.productName}</td>
-                        <td className="px-5 py-3 text-[14px] text-[#86868B] whitespace-nowrap">{product.strategyCategory || '-'}</td>
-                        {DATA_COLUMNS.map((col) => (
-                          <td key={col.key} className="px-5 py-3 text-right whitespace-nowrap">
-                            {renderCell(product[col.key] as number, col.key !== 'sharpeRatio' && col.key !== 'annualizedVolatility')}
-                          </td>
-                        ))}
-                      </tr>
+          <div className="px-4 lg:px-6 py-6 overflow-x-auto">
+            <table className="w-full" style={{ minWidth: '1800px' }}>
+                <thead className="bg-[#00000004]">
+                  <tr>
+                    <th className="px-5 py-3 text-left text-[13px] font-medium text-[#86868B] whitespace-nowrap">基金管理人</th>
+                    <th className="px-5 py-3 text-left text-[13px] font-medium text-[#86868B] whitespace-nowrap">管理人规模</th>
+                    <th className="px-5 py-3 text-left text-[13px] font-medium text-[#86868B] whitespace-nowrap sticky left-0 z-10 bg-[#FAFAFB]">产品名称</th>
+                    <th className="px-5 py-3 text-left text-[13px] font-medium text-[#86868B] whitespace-nowrap">策略分类</th>
+                    {DATA_COLUMNS.map((col) => (
+                      <th key={col.key} className="px-5 py-3 text-right text-[13px] font-medium text-[#86868B] whitespace-nowrap">{col.label}</th>
                     ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
+                    {/* 走势列 - 全屏模式 */}
+                    <th className="px-5 py-3 text-center text-[13px] font-medium text-[#86868B] whitespace-nowrap">走势</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredProducts.map((product) => (
+                    <tr
+                      key={product.id}
+                      className="border-b border-[#00000008] hover:bg-[#0071E3]/[0.02] transition-all duration-200"
+                    >
+                      <td className="px-5 py-3 text-[14px] text-[#1D1D1F] whitespace-nowrap">{product.fundManager}</td>
+                      <td className="px-5 py-3 text-[14px] text-[#86868B] whitespace-nowrap">{product.managerScale}</td>
+                      <td className="px-5 py-3 text-[14px] text-[#1D1D1F] font-medium whitespace-nowrap sticky left-0 z-10 bg-white">{product.productName}</td>
+                      <td className="px-5 py-3 text-[14px] text-[#86868B] whitespace-nowrap">{product.strategyCategory || '-'}</td>
+                      {DATA_COLUMNS.map((col) => (
+                        <td key={col.key} className="px-5 py-3 text-right whitespace-nowrap">
+                          {renderCell(product[col.key] as number, col.key !== 'sharpeRatio' && col.key !== 'annualizedVolatility')}
+                        </td>
+                      ))}
+                      {/* 走势列 - 全屏模式 */}
+                      <td className="px-5 py-3 text-center whitespace-nowrap">
+                        {product.productCode ? (
+                          <TrendTooltip 
+                            productCode={product.productCode}
+                            productName={product.productName}
+                          >
+                            <button className="p-2 rounded-lg hover:bg-[#0071E3]/10 transition-all group">
+                              <TrendingUp className="w-4 h-4 text-[#0071E3] group-hover:scale-110 transition-transform" />
+                            </button>
+                          </TrendTooltip>
+                        ) : (
+                          <span className="text-[#A1A1A6]">-</span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
           </div>
         </div>,
         document.body

@@ -89,33 +89,68 @@ export async function GET(request: Request) {
     
     const strategies = [];
 
+    // 将日期字符串转为Unix时间戳（毫秒）用于查询
+    const targetTimestamp = new Date(dataDate).getTime();
+
     for (const strategyType of strategyTypes) {
       // 根据策略类型和日期确定实际查询的字段
       const actualMetric = getActualMetric(metric, strategyType, dataDate);
 
-      // 查询该策略类型的所有产品
-      const products = await prisma.fundProduct.findMany({
-        where: {
-          dataDate: new Date(dataDate),
+      // 使用原始SQL查询（因为dataDate存储为Unix时间戳整数）
+      let products: any[];
+      
+      // 对于指增策略且日期 >= 2026-07-08，如果新字段为空则回退到旧字段
+      const date = new Date(dataDate);
+      const cutoffDate = new Date('2026-07-08');
+      const indexEnhancedTypes = [
+        'index-enhanced-300', 'index-enhanced-500', 'index-enhanced-1000',
+        'index-enhanced-2000', 'index-enhanced-alternative'
+      ];
+      const isIndexEnhanced = indexEnhancedTypes.includes(strategyType);
+      const needsFallback = date >= cutoffDate && isIndexEnhanced && actualMetric.startsWith('excess');
+      
+      if (needsFallback) {
+        // 同时查询新字段和对应的旧字段
+        const oldMetric = NEW_TO_OLD_METRIC_MAP[actualMetric] || actualMetric;
+        products = await prisma.$queryRawUnsafe(
+          `SELECT "${actualMetric}" as newValue, "${oldMetric}" as oldValue 
+           FROM FundProduct WHERE dataDate = ? AND strategyType = ?`,
+          targetTimestamp,
+          strategyType
+        );
+        
+        // 优先使用新字段，为空则回退到旧字段
+        const values = products
+          .map((p: any) => p.newValue !== null && p.newValue !== undefined ? p.newValue : p.oldValue)
+          .filter((v: number | null): v is number => v !== null && v !== undefined && !isNaN(v));
+        
+        const stats = calculateFiveNumberStats(values);
+        strategies.push({
           strategyType,
-        },
-        select: {
-          [actualMetric]: true,
-        } as any,
-      });
+          strategyName: STRATEGY_NAME_MAP[strategyType] || strategyType,
+          ...stats,
+        });
+      } else {
+        // 正常查询
+        products = await prisma.$queryRawUnsafe(
+          `SELECT "${actualMetric}" as value FROM FundProduct WHERE dataDate = ? AND strategyType = ?`,
+          targetTimestamp,
+          strategyType
+        );
 
-      // 计算五数统计
-      const values = products
-        .map((p: any) => p[actualMetric])
-        .filter((v: number | null): v is number => v !== null && !isNaN(v));
+        // 计算五数统计
+        const values = products
+          .map((p: any) => p.value)
+          .filter((v: number | null): v is number => v !== null && v !== undefined && !isNaN(v));
 
-      const stats = calculateFiveNumberStats(values);
+        const stats = calculateFiveNumberStats(values);
 
-      strategies.push({
-        strategyType,
-        strategyName: STRATEGY_NAME_MAP[strategyType] || strategyType,
-        ...stats,
-      });
+        strategies.push({
+          strategyType,
+          strategyName: STRATEGY_NAME_MAP[strategyType] || strategyType,
+          ...stats,
+        });
+      }
     }
 
     return NextResponse.json({ strategies });

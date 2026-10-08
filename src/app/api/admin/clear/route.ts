@@ -14,16 +14,21 @@ export async function POST(request: Request) {
         message: '所有数据已清空',
       });
     } else if (startDate || endDate) {
-      // 按日期范围删除
-      const where: any = {};
+      // 按日期范围删除（使用 raw SQL，因为 dataDate 存的是 Unix 时间戳整数）
+      let whereClause = '';
       if (startDate) {
-        where.dataDate = { gte: new Date(startDate) };
+        const startTs = new Date(startDate + 'T00:00:00.000Z').getTime();
+        whereClause += `dataDate >= ${startTs}`;
       }
       if (endDate) {
-        where.dataDate = { ...where.dataDate, lte: new Date(endDate) };
+        const endTs = new Date(endDate + 'T00:00:00.000Z').getTime();
+        if (whereClause) whereClause += ' AND ';
+        whereClause += `dataDate <= ${endTs}`;
       }
 
-      const deleted = await prisma.fundProduct.deleteMany({ where });
+      const deleted = await prisma.$executeRawUnsafe(
+        `DELETE FROM FundProduct WHERE ${whereClause}`
+      );
 
       let dateDesc = '';
       if (startDate && endDate) {
@@ -36,17 +41,17 @@ export async function POST(request: Request) {
 
       return NextResponse.json({
         success: true,
-        message: `已删除 ${dateDesc} 的 ${deleted.count} 条记录`,
+        message: `已删除 ${dateDesc} 的 ${deleted} 条记录`,
       });
     } else if (dataDate) {
       // 删除指定日期的数据
-      const date = new Date(dataDate);
-      const deleted = await prisma.fundProduct.deleteMany({
-        where: { dataDate: date },
-      });
+      const targetTimestamp = new Date(dataDate + 'T00:00:00.000Z').getTime();
+      const deleted = await prisma.$executeRawUnsafe(
+        `DELETE FROM FundProduct WHERE dataDate = ${targetTimestamp}`
+      );
       return NextResponse.json({
         success: true,
-        message: `已删除 ${dataDate} 的 ${deleted.count} 条记录`,
+        message: `已删除 ${dataDate} 的 ${deleted} 条记录`,
       });
     } else {
       return NextResponse.json(

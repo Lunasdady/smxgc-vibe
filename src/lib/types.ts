@@ -236,6 +236,7 @@ export interface FundProduct {
   isLargeScale: boolean;
   productName: string;
   strategyCategory: string | null;
+  productCode?: string; // 新增：产品代码（从 StrategyMapping 关联）
   // 旧字段（日期 < 2026-07-08）
   weeklyReturn: number | null;
   monthlyReturn: number | null;

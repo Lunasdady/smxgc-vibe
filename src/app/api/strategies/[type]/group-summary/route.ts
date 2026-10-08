@@ -60,32 +60,44 @@ export async function GET(
       else if (strategyType === 'quantitative-futures') actualStrategyType = 'quantitative-cta';
     }
 
-    // 查询 100 亿以上产品
-    const largeScaleProducts = await prisma.fundProduct.findMany({
-      where: {
-        dataDate: new Date(dataDate),
-        strategyType: actualStrategyType,
-        isLargeScale: true,
-      },
-      select: { [metric]: true } as any,
-    });
+    // 将日期转为 Unix 时间戳（毫秒），因为数据库中 dataDate 存的是整数
+    const targetTimestamp = new Date(dataDate + 'T00:00:00.000Z').getTime();
 
-    // 查询 100 亿以下产品
-    const smallScaleProducts = await prisma.fundProduct.findMany({
-      where: {
-        dataDate: new Date(dataDate),
-        strategyType: actualStrategyType,
-        isLargeScale: false,
-      },
-      select: { [metric]: true } as any,
-    });
+    // 指增策略超额收益字段回退映射
+    const indexEnhancedTypes = ['index-enhanced-300', 'index-enhanced-500', 'index-enhanced-1000', 'index-enhanced-2000', 'index-enhanced-alternative'];
+    const isIndexEnhanced = indexEnhancedTypes.includes(strategyType);
+    const needsFallback = isIndexEnhanced && date >= new Date('2026-07-08') && metric.startsWith('excess');
+    const oldMetric = needsFallback ? {
+      excessReturn1w: 'weeklyReturn',
+      excessReturn3m: 'monthlyReturn',
+      excessReturnYtd: 'ytdReturn',
+      excessAnnualizedReturn: 'annualizedReturnSinceInception',
+      excessYtdMaxDrawdown: 'ytdMaxDrawdown',
+      excessInceptionMaxDrawdown: 'inceptionMaxDrawdown',
+      excessAnnualizedVolatility: 'annualizedVolatility',
+      excessSharpeRatio: 'sharpeRatio',
+    }[metric] : null;
+
+    // 查询 100 亿以上产品（使用 COALESCE 回退）
+    const largeScaleProducts = await prisma.$queryRawUnsafe<any[]>(
+      oldMetric
+        ? `SELECT COALESCE("${metric}", "${oldMetric}") as value FROM FundProduct WHERE dataDate = ${targetTimestamp} AND strategyType = '${actualStrategyType}' AND isLargeScale = 1`
+        : `SELECT "${metric}" as value FROM FundProduct WHERE dataDate = ${targetTimestamp} AND strategyType = '${actualStrategyType}' AND isLargeScale = 1`
+    );
+
+    // 查询 100 亿以下产品（使用 COALESCE 回退）
+    const smallScaleProducts = await prisma.$queryRawUnsafe<any[]>(
+      oldMetric
+        ? `SELECT COALESCE("${metric}", "${oldMetric}") as value FROM FundProduct WHERE dataDate = ${targetTimestamp} AND strategyType = '${actualStrategyType}' AND isLargeScale = 0`
+        : `SELECT "${metric}" as value FROM FundProduct WHERE dataDate = ${targetTimestamp} AND strategyType = '${actualStrategyType}' AND isLargeScale = 0`
+    );
 
     const largeValues = largeScaleProducts
-      .map((p: any) => p[metric])
+      .map((p: any) => p.value)
       .filter((v: number | null): v is number => v !== null && !isNaN(v));
 
     const smallValues = smallScaleProducts
-      .map((p: any) => p[metric])
+      .map((p: any) => p.value)
       .filter((v: number | null): v is number => v !== null && !isNaN(v));
 
     return NextResponse.json({

@@ -33,6 +33,18 @@ export default function PermissionsPage() {
   const [approving, setApproving] = useState(false);
   const [message, setMessage] = useState('');
 
+  // SMTP config editing
+  const [smtpConfig, setSmtpConfig] = useState({
+    smtpHost: 'smtp.163.com',
+    smtpPort: 465,
+    smtpUser: '',
+    smtpPass: '',
+    smtpFromName: '私募星工厂',
+    smtpSecure: true,
+  });
+  const [showSmtpEditor, setShowSmtpEditor] = useState(false);
+  const [smtpTesting, setSmtpTesting] = useState(false);
+
   // 检查管理员认证
   useEffect(() => {
     const checkAuth = async () => {
@@ -83,6 +95,12 @@ export default function PermissionsPage() {
 
     fetchUsers();
   }, [isAuthenticated, activeTab, searchTerm]);
+
+  // 加载 SMTP 配置
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    loadSmtpConfig();
+  }, [isAuthenticated]);
 
   const toggleSelect = (id: number) => {
     setSelectedIds((prev) =>
@@ -267,6 +285,66 @@ export default function PermissionsPage() {
     setTimeout(() => setMessage(''), 3000);
   };
 
+  const loadSmtpConfig = async () => {
+    try {
+      const response = await fetch('/api/admin/smtp-config');
+      const data = await response.json();
+      setSmtpConfig({
+        smtpHost: data.smtpHost || 'smtp.163.com',
+        smtpPort: data.smtpPort || 465,
+        smtpUser: data.smtpUser || '',
+        smtpPass: data.smtpPass || '',
+        smtpFromName: data.smtpFromName || '私募星工厂',
+        smtpSecure: data.smtpSecure !== false,
+      });
+    } catch (error) {
+      console.error('Failed to load SMTP config:', error);
+    }
+  };
+
+  const handleSaveSmtpConfig = async () => {
+    setMessage('');
+    try {
+      const response = await fetch('/api/admin/smtp-config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(smtpConfig),
+      });
+      if (response.ok) {
+        setMessage('SMTP配置已保存');
+        setShowSmtpEditor(false);
+      } else {
+        setMessage('保存失败');
+      }
+    } catch (error) {
+      setMessage('保存失败');
+    }
+    setTimeout(() => setMessage(''), 3000);
+  };
+
+  const handleTestSmtp = async () => {
+    setSmtpTesting(true);
+    setMessage('');
+    try {
+      const response = await fetch('/api/admin/smtp-config/test', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(smtpConfig),
+      });
+      if (response.ok) {
+        setMessage('邮件发送成功！请检查收件箱');
+      } else {
+        const data = await response.json();
+        setMessage(data.error || '邮件发送失败');
+      }
+    } catch (error) {
+      setMessage('邮件发送失败');
+    } finally {
+      setSmtpTesting(false);
+    }
+    setTimeout(() => setMessage(''), 5000);
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-[#F5F5F7] flex items-center justify-center">
@@ -298,10 +376,146 @@ export default function PermissionsPage() {
         </div>
       </header>
 
-      <main className="max-w-[1200px] mx-auto px-6 lg:px-8 py-8">
-        <div className="flex justify-center mb-6">
-          <AdminTabs />
+      {/* 🚨 固定定位的管理后台Tab导航 */}
+      <div className="sticky top-[56px] z-20 bg-[#F5F5F7]/80 backdrop-blur-lg py-3">
+        <div className="max-w-[1200px] mx-auto px-6 lg:px-8">
+          <div className="flex justify-center">
+            <AdminTabs />
+          </div>
         </div>
+      </div>
+
+      <main className="max-w-[1200px] mx-auto px-6 lg:px-8 py-8">
+        {/* SMTP 邮箱配置 */}
+        <div className="glass-card rounded-2xl p-6 mb-6">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-[15px] font-semibold text-[#1D1D1F] flex items-center gap-2">
+              <div className="w-1.5 h-4 rounded-full bg-[#0071E3]" />
+              验证码邮箱配置
+            </h2>
+            <button
+              onClick={() => setShowSmtpEditor(!showSmtpEditor)}
+              className="px-4 py-2 bg-[#0071E3] hover:bg-[#0077ED] text-white rounded-xl transition-colors text-[14px] font-medium"
+            >
+              {showSmtpEditor ? '取消编辑' : '编辑配置'}
+            </button>
+          </div>
+
+          {showSmtpEditor ? (
+            <div className="space-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-[13px] text-[#86868B] mb-1.5">SMTP服务器</label>
+                  <input
+                    type="text"
+                    value={smtpConfig.smtpHost}
+                    onChange={(e) => setSmtpConfig({ ...smtpConfig, smtpHost: e.target.value })}
+                    className="w-full px-3 py-2 bg-white border border-[#0000000D] rounded-xl text-[14px] text-[#1D1D1F] placeholder-[#A1A1A6] focus:outline-none focus:ring-2 focus:ring-[#0071E3]/30 transition-all shadow-apple"
+                    placeholder="smtp.163.com"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[13px] text-[#86868B] mb-1.5">SMTP端口</label>
+                  <input
+                    type="number"
+                    value={smtpConfig.smtpPort}
+                    onChange={(e) => setSmtpConfig({ ...smtpConfig, smtpPort: parseInt(e.target.value) || 465 })}
+                    className="w-full px-3 py-2 bg-white border border-[#0000000D] rounded-xl text-[14px] text-[#1D1D1F] placeholder-[#A1A1A6] focus:outline-none focus:ring-2 focus:ring-[#0071E3]/30 transition-all shadow-apple"
+                    placeholder="465"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[13px] text-[#86868B] mb-1.5">发件邮箱</label>
+                  <input
+                    type="text"
+                    value={smtpConfig.smtpUser}
+                    onChange={(e) => setSmtpConfig({ ...smtpConfig, smtpUser: e.target.value })}
+                    className="w-full px-3 py-2 bg-white border border-[#0000000D] rounded-xl text-[14px] text-[#1D1D1F] placeholder-[#A1A1A6] focus:outline-none focus:ring-2 focus:ring-[#0071E3]/30 transition-all shadow-apple"
+                    placeholder="your-email@163.com"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[13px] text-[#86868B] mb-1.5">邮箱密码/授权码</label>
+                  <input
+                    type="password"
+                    value={smtpConfig.smtpPass}
+                    onChange={(e) => setSmtpConfig({ ...smtpConfig, smtpPass: e.target.value })}
+                    className="w-full px-3 py-2 bg-white border border-[#0000000D] rounded-xl text-[14px] text-[#1D1D1F] placeholder-[#A1A1A6] focus:outline-none focus:ring-2 focus:ring-[#0071E3]/30 transition-all shadow-apple"
+                    placeholder="授权码或密码"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[13px] text-[#86868B] mb-1.5">发件人名称</label>
+                  <input
+                    type="text"
+                    value={smtpConfig.smtpFromName}
+                    onChange={(e) => setSmtpConfig({ ...smtpConfig, smtpFromName: e.target.value })}
+                    className="w-full px-3 py-2 bg-white border border-[#0000000D] rounded-xl text-[14px] text-[#1D1D1F] placeholder-[#A1A1A6] focus:outline-none focus:ring-2 focus:ring-[#0071E3]/30 transition-all shadow-apple"
+                    placeholder="私募星工厂"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[13px] text-[#86868B] mb-1.5">SSL加密</label>
+                  <div className="flex items-center h-10">
+                    <label className="inline-flex items-center cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={smtpConfig.smtpSecure}
+                        onChange={(e) => setSmtpConfig({ ...smtpConfig, smtpSecure: e.target.checked })}
+                        className="sr-only peer"
+                      />
+                      <div className="relative w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#0071E3]"></div>
+                      <span className="ml-3 text-[14px] text-[#1D1D1F]">{smtpConfig.smtpSecure ? '已启用' : '未启用'}</span>
+                    </label>
+                  </div>
+                </div>
+              </div>
+              <div className="flex items-center gap-3 pt-2">
+                <button
+                  onClick={handleSaveSmtpConfig}
+                  className="px-5 py-2.5 bg-[#0071E3] hover:bg-[#0077ED] text-white rounded-xl text-[14px] font-medium transition-all"
+                >
+                  保存配置
+                </button>
+                <button
+                  onClick={handleTestSmtp}
+                  disabled={smtpTesting}
+                  className="px-5 py-2.5 bg-[#16A34A] hover:bg-[#15803D] text-white rounded-xl text-[14px] font-medium transition-all disabled:opacity-50"
+                >
+                  {smtpTesting ? '发送中...' : '测试邮件'}
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-[14px]">
+              <div>
+                <span className="text-[#86868B]">SMTP服务器：</span>
+                <span className="text-[#1D1D1F]">{smtpConfig.smtpHost}</span>
+              </div>
+              <div>
+                <span className="text-[#86868B]">端口：</span>
+                <span className="text-[#1D1D1F]">{smtpConfig.smtpPort}</span>
+              </div>
+              <div>
+                <span className="text-[#86868B]">发件邮箱：</span>
+                <span className="text-[#1D1D1F]">{smtpConfig.smtpUser || '未配置'}</span>
+              </div>
+              <div>
+                <span className="text-[#86868B]">发件人：</span>
+                <span className="text-[#1D1D1F]">{smtpConfig.smtpFromName}</span>
+              </div>
+              <div>
+                <span className="text-[#86868B]">SSL：</span>
+                <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[12px] font-medium ${
+                  smtpConfig.smtpSecure ? 'bg-green-50 text-green-700' : 'bg-amber-50 text-amber-700'
+                }`}>
+                  {smtpConfig.smtpSecure ? '已启用' : '未启用'}
+                </span>
+              </div>
+            </div>
+          )}
+        </div>
+
         {/* Tabs */}
         <div className="flex items-center gap-1 mb-6 bg-white rounded-2xl p-1 shadow-apple inline-flex">
           <button

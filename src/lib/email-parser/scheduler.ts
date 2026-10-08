@@ -16,14 +16,17 @@ export function initEmailScheduler(): void {
   const schedule = process.env.EMAIL_PARSE_SCHEDULE || '0 9,11,13,15,17,20 * * *';
   
   console.log(`🕒 初始化邮件解析定时任务: ${schedule}`);
+  console.log(`🌍 当前系统时间: ${new Date().toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' })}`);
   
   cron.schedule(schedule, async () => {
-    console.log('⏰ 触发定时邮件解析任务...');
+    console.log(`⏰ 触发定时邮件解析任务 [${new Date().toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' })}]`);
     try {
       await executeParseTask();
     } catch (error) {
       console.error('❌ 定时解析任务失败:', error);
     }
+  }, {
+    timezone: "Asia/Shanghai"  // 🚨 明确指定时区
   });
   
   schedulerStarted = true;

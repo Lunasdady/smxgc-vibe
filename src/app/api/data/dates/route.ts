@@ -7,17 +7,23 @@ export const dynamic = 'force-dynamic';
 
 export async function GET() {
   try {
-    // 获取所有不重复的数据日期
-    const dates = await prisma.fundProduct.groupBy({
-      by: ['dataDate'],
-      orderBy: {
-        dataDate: 'desc',
-      },
-    });
+    // 查询FundProduct表中所有不重复的数据日期（概览页箱型图用）
+    const dates: any[] = await prisma.$queryRaw`
+      SELECT DISTINCT dataDate 
+      FROM FundProduct 
+      WHERE dataDate IS NOT NULL
+      ORDER BY dataDate DESC
+    `;
 
     // 转换为字符串数组
-    const dateStrings = dates.map((d: { dataDate: Date }) => dayjs(d.dataDate).format('YYYY-MM-DD'));
+    const dateStrings = dates
+      .filter((d: any) => d.dataDate !== null)
+      .map((d: any) => {
+        const dateValue = new Date(d.dataDate);
+        return dayjs(dateValue).format('YYYY-MM-DD');
+      });
 
+    console.log(`[Dates API] FundProduct可用日期数: ${dateStrings.length}`);
     return NextResponse.json({ dates: dateStrings });
   } catch (error) {
     console.error('Error fetching dates:', error);

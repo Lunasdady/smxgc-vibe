@@ -426,10 +426,16 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
         </div>
       </header>
 
-      <main className="max-w-7xl mx-auto p-6 space-y-6">
-        <div className="flex justify-center">
-          <AdminTabs />
+      {/* 🚨 固定定位的管理后台Tab导航 */}
+      <div className="sticky top-[56px] z-20 bg-[#F5F5F7]/80 backdrop-blur-lg py-3">
+        <div className="max-w-7xl mx-auto px-6">
+          <div className="flex justify-center">
+            <AdminTabs />
+          </div>
         </div>
+      </div>
+
+      <main className="max-w-7xl mx-auto p-6 space-y-6">
         {message && (
           <div className={`p-4 rounded-xl border text-[14px] ${message.includes('成功') || message.includes('更新') ? 'bg-[#16A34A]/10 text-[#16A34A] border-[#16A34A]/20' : 'bg-[#DC2626]/10 text-[#DC2626] border-[#DC2626]/20'}`}>
             {message}

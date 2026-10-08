@@ -12,6 +12,7 @@ datasource db {
 
 model FundProduct {
   id                         Int      @id @default(autoincrement())
+  productCode                String   // 产品代码
   dataDate                   DateTime // 数据所属日期，来源于文件名
   strategyType               String   // 策略标识，如 "index-enhanced-300"
   fundManager                String   // 基金管理人
@@ -42,6 +43,7 @@ model FundProduct {
 
   createdAt                  DateTime @default(now())
 
+  @@unique([productCode, dataDate])
   @@index([dataDate])
   @@index([dataDate, strategyType])
 }
@@ -151,6 +153,71 @@ model NavData {
   @@index([navDate])
   @@index([productName])
   @@index([emailParseResultId])
+}
+
+// 产品策略类型映射表
+model StrategyMapping {
+  id                  Int      @id @default(autoincrement())
+  productCode         String   // 产品代码
+  productName         String   // 产品名称
+  primaryStrategy     String   // 一级策略
+  secondaryStrategy   String   // 二级策略
+  category            String   // 分类分层（观察池等）
+  fundManager         String?  // 基金管理人
+  managerScale        String?  // 管理人规模
+  updatedAt           DateTime @default(now()) @updatedAt
+  createdAt           DateTime @default(now())
+
+  @@unique([productCode])
+  @@index([productCode])
+  @@index([primaryStrategy])
+  @@index([secondaryStrategy])
+  @@index([category])
+}
+
+// 基准指数数据表
+model IndexData {
+  id          Int      @id @default(autoincrement())
+  indexCode   String   // 指数代码：000300.SH
+  indexName   String   // 指数名称：沪深300
+  tradeDate   DateTime // 交易日期
+  closePrice  Float    // 收盘价
+  dailyReturn Float?   // 日收益率
+  createdAt   DateTime @default(now())
+
+  @@unique([indexCode, tradeDate])
+  @@index([indexCode])
+  @@index([tradeDate])
+}
+
+// 策略-指数映射表
+model IndexMapping {
+  id              Int      @id @default(autoincrement())
+  secondaryStrategy String @unique // 二级策略名称
+  indexCode       String   // 基准指数代码
+  indexName       String   // 基准指数名称
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @default(now()) @updatedAt
+
+  @@index([secondaryStrategy])
+  @@index([indexCode])
+}
+
+// 策略类型字典表
+model StrategyDictionary {
+  id                  Int      @id @default(autoincrement())
+  level               Int      // 1=一级策略, 2=二级策略
+  parentStrategy      String?  // 二级策略的父级（一级策略）
+  strategyName        String   // 策略名称
+  sortOrder           Int      @default(0)  // 排序顺序
+  isActive            Boolean  @default(true)  // 是否启用
+  updatedAt           DateTime @default(now()) @updatedAt
+  createdAt           DateTime @default(now())
+
+  @@unique([level, parentStrategy, strategyName])
+  @@index([level])
+  @@index([parentStrategy])
 }
 
 // 解析日志表 - 用于详细记录每封邮件的解析过程

@@ -1,6 +1,6 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {	
-  // output: 'standalone', // 🚨 仅生产部署时启用
+  output: 'standalone', // 生产部署必需
   images: {
     domains: [],
   },

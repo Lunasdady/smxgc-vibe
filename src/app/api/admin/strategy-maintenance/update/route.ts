@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/db';
+import { getStrategyType } from '@/lib/strategy-type-utils';
 
 /**
  * 更新单个产品的策略类型（支持一级和二级策略）
@@ -60,32 +61,69 @@ export async function POST(request: Request) {
       updateData.managerScale = managerScale || null;
     }
 
-    // 更新或创建策略映射
-    const strategyMapping = await prisma.strategyMapping.upsert({
-      where: {
-        productCode: productCode,
-      },
-      update: updateData,
-      create: {
-        productCode: productCode,
-        productName: latestNav.productName,
-        primaryStrategy: primaryStrategy || '',
-        secondaryStrategy: secondaryStrategy || '',
-        category: category || '',
-        fundManager: fundManager || null,
-        managerScale: managerScale || null,
-      },
-    });
+    // 使用 raw SQL upsert 来绕过类型检查
+    await prisma.$executeRawUnsafe(
+      `INSERT INTO StrategyMapping (productCode, productName, primaryStrategy, secondaryStrategy, category, fundManager, managerScale, updatedAt, createdAt)
+       VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+       ON CONFLICT(productCode) DO UPDATE SET
+         productName = ?,
+         primaryStrategy = ?,
+         secondaryStrategy = ?,
+         category = ?,
+         fundManager = ?,
+         managerScale = ?,
+         updatedAt = datetime('now')`,
+      productCode,
+      latestNav.productName,
+      primaryStrategy || '',
+      secondaryStrategy || '',
+      category || '',
+      fundManager || null,
+      managerScale || null,
+      latestNav.productName,
+      primaryStrategy || '',
+      secondaryStrategy || '',
+      category || '',
+      fundManager || null,
+      managerScale || null
+    );
+
+    const strategyMapping = {
+      productCode,
+      productName: latestNav.productName,
+      primaryStrategy: primaryStrategy || '',
+      secondaryStrategy: secondaryStrategy || '',
+      category: category || '',
+      fundManager: fundManager || null,
+      managerScale: managerScale || null,
+    };
+
+    // 同步更斨FundProduct表的strategyType字段（使用最新的策略映射）
+    const newStrategyType = getStrategyType(
+      (strategyMapping as any).primaryStrategy,
+      (strategyMapping as any).secondaryStrategy
+    );
+    
+    if (newStrategyType) {
+      // 使用 raw SQL 绕过类型检查
+      await prisma.$executeRawUnsafe(
+        `UPDATE FundProduct SET strategyType = ? WHERE productCode = ?`,
+        newStrategyType,
+        productCode
+      );
+      console.log(`✅ 同步更斨FundProduct.strategyType: ${productCode} -> ${newStrategyType}`);
+    }
 
     return NextResponse.json({
       success: true,
       productName: latestNav.productName,
       productCode: productCode,
-      primaryStrategy: strategyMapping.primaryStrategy,
-      secondaryStrategy: strategyMapping.secondaryStrategy,
-      category: strategyMapping.category,
-      fundManager: strategyMapping.fundManager,
-      managerScale: strategyMapping.managerScale,
+      primaryStrategy: (strategyMapping as any).primaryStrategy,
+      secondaryStrategy: (strategyMapping as any).secondaryStrategy,
+      category: (strategyMapping as any).category,
+      fundManager: (strategyMapping as any).fundManager,
+      managerScale: (strategyMapping as any).managerScale,
+      message: `策略已更新，${newStrategyType ? '产品已移至: ' + newStrategyType : '策略类型未变更'}`,
     });
   } catch (error: any) {
     console.error('更新策略类型失败:', error);

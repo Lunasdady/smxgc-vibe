@@ -1,377 +1,372 @@
----
-name: deploy-production
-description: 自动化部署Next.js应用到生产环境或测试环境,包含Nginx配置验证、环境变量检查、数据库同步、构建部署、缓存清除验证。使用场景:部署到生产环境、更新测试环境、服务器初始化部署、排查部署问题时参考标准流程。
----
+# 生产环境部署技能
 
-# 生产环境部署Skill
+## 概述
 
-自动化部署Next.js应用到云服务器,包含完整的验证流程,避免常见的部署陷阱。
+自动化部署 Next.js 应用到生产环境，包含完整的备份、验证和回滚机制。
 
-## 部署前检查清单
+## 前置条件
 
-在执行部署前,必须验证以下项目:
+- 服务器路径：`/var/www/my-app-prod`（根据实际调整）
+- 生产端口：`3000`（根据实际调整）
+- PM2 进程名：`smxgc-vibe-prod`
+- Git 分支：`main` 或 `master`
+- 访问地址：生产域名
 
-- [ ] Nginx的 `sites-enabled` 软链接指向正确配置文件
-- [ ] `.env` 文件存在且包含所有必需环境变量
-- [ ] 数据库schema与Prisma模型同步
-- [ ] 目标服务器目录可访问
-- [ ] PM2进程管理工具已安装
+## 部署流程
 
-## 环境选择
+### Step 0: 部署前检查清单 ✅
 
-根据部署目标选择对应的配置:
+在开始部署前确认：
 
-### 生产环境
-- **目录**: `/var/www/my-app`
-- **端口**: `3002`
-- **分支**: `master`
-- **PM2进程名**: `smxgc-vibe`
-- **数据库**: `/var/www/my-app/prisma/dev.db`
+- [ ] 代码已合并到主分支并通过 Code Review
+- [ ] 测试环境已验证通过
+- [ ] 已通知用户可能的停机时间
+- [ ] 准备好回滚方案
+- [ ] 数据库迁移脚本已测试
 
-### 测试环境
-- **目录**: `/var/www/my-app-test`
-- **端口**: `7371`
-- **分支**: `develop`
-- **PM2进程名**: `smxgc-vibe-test`
-- **数据库**: `/var/www/my-app-test/prisma/dev.db`
-
-## 完整部署流程
-
-### ⚠️ 第0步: 数据库备份(关键!)
-
-**在拉取代码前,必须先备份数据库!**
+### Step 1: 备份用户权限数据 ⚠️ 最关键步骤
 
 ```bash
-# 生产环境
-cd /var/www/my-app
-timestamp=$(date +%Y%m%d_%H%M%S)
-cp prisma/dev.db "prisma/dev.db.backup.${timestamp}"
-ls -lh prisma/dev.db.backup.*
+cd /var/www/my-app-prod
 
-# 测试环境
-cd /var/www/my-app-test
-timestamp=$(date +%Y%m%d_%H%M%S)
-cp prisma/dev.db "prisma/dev.db.backup.${timestamp}"
-ls -lh prisma/dev.db.backup.*
+# 创建备份目录
+BACKUP_DIR="backups/$(date +%Y%m%d_%H%M%S)"
+sudo mkdir -p "$BACKUP_DIR"
+
+# 1. 备份完整数据库
+sudo cp prisma/dev.db "$BACKUP_DIR/dev.db.backup"
+echo "✅ 数据库已备份：$BACKUP_DIR/dev.db.backup"
+
+# 2. 导出用户数据（CSV 格式）
+sudo sqlite3 prisma/dev.db ".mode csv" ".headers on" \
+  ".output $BACKUP_DIR/users.csv" \
+  "SELECT id, email, realName, phone, organization, department, position, status, permissions, createdAt, updatedAt FROM User;"
+
+sudo sqlite3 prisma/dev.db ".output stdout"
+echo "✅ 用户数据已导出：$BACKUP_DIR/users.csv"
+
+# 3. 导出访问日志（可选，保留最近 30 天）
+sudo sqlite3 prisma/dev.db ".mode csv" ".headers on" \
+  ".output $BACKUP_DIR/access_logs.csv" \
+  "SELECT * FROM AccessLog WHERE createdAt >= datetime('now', '-30 days');"
+
+sudo sqlite3 prisma/dev.db ".output stdout"
+echo "✅ 访问日志已导出：$BACKUP_DIR/access_logs.csv"
+
+# 4. 备份 .env 配置文件
+sudo cp .env "$BACKUP_DIR/.env.backup"
+echo "✅ 配置文件已备份：$BACKUP_DIR/.env.backup"
+
+# 5. 验证备份文件
+echo ""
+echo "=== 备份文件验证 ==="
+ls -lh "$BACKUP_DIR/" | tail -10
+echo "备份目录：$BACKUP_DIR"
 ```
 
-**验证备份成功**:
-- 备份文件大小应与原数据库相近(不应为0)
-- 保留最近3次备份,清理旧备份:
+### Step 2: 同步 Git 代码
+
 ```bash
-# 只保留最新3个备份
-ls -t prisma/dev.db.backup.* | tail -n +4 | xargs rm -f
+cd /var/www/my-app-prod
+
+# 获取最新代码
+sudo git fetch origin main
+
+# 查看当前分支状态
+sudo git status
+
+# 切换到主分支最新代码
+sudo git reset --hard origin/main
+
+echo "✅ 代码已同步到：$(sudo git log --oneline -1)"
 ```
 
-### 第1步: 连接服务器并进入目录
+### Step 3: 安装依赖
 
 ```bash
-ssh user@your-server-ip
-cd /var/www/my-app  # 或 /var/www/my-app-test
-```
+cd /var/www/my-app-prod
 
-### 第2步: 验证Nginx配置
-
-```bash
-# 检查sites-enabled链接是否正确
-ls -la /etc/nginx/sites-enabled/
-
-# 必须看到default配置,而不是旧配置
-# 错误示例: my-app -> /etc/nginx/sites-available/my-app
-# 正确示例: default -> /etc/nginx/sites-available/default
-```
-
-**如果链接错误,立即修复:**
-```bash
-sudo rm /etc/nginx/sites-enabled/my-app
-sudo ln -s /etc/nginx/sites-available/default /etc/nginx/sites-enabled/default
-sudo nginx -t
-sudo systemctl restart nginx
-```
-
-### 第3步: 拉取最新代码
-
-```bash
-git pull origin master  # 生产环境
+# 安装生产依赖
+sudo npm ci --production  # 使用 ci 确保依赖版本一致
 # 或
-git pull origin develop  # 测试环境
+sudo npm install
 
-# 关键: 确认拉取成功且是最新版本
-git log --oneline -1
+echo "✅ 依赖安装完成"
 ```
 
-**验证**: 对比本地`git log`和服务器的commit hash,必须一致!
-
-### 第4步: 验证数据库文件安全
-
-**关键检查: 确保git pull不会删除数据库!**
+### Step 4: 数据库迁移
 
 ```bash
-# 检查.gitignore是否包含数据库文件
-cat .gitignore | grep -E "\*\.db|dev\.db"
+cd /var/www/my-app-prod
 
-# 如果dev.db被Git追踪(危险!),必须先恢复
-if git ls-files --error-unmatch prisma/dev.db 2>/dev/null; then
-  echo "⚠️ 警告: dev.db被Git追踪!"
-  echo "立即执行: git rm --cached prisma/dev.db"
-  echo "并添加到.gitignore: echo 'prisma/*.db' >> .gitignore"
+# 方式 1：使用迁移（推荐，如果有迁移文件）
+sudo npx prisma migrate deploy
+
+# 方式 2：直接推送结构（无迁移文件时）
+# sudo npx prisma db push --accept-data-loss
+
+# 生成 Prisma Client
+sudo npx prisma generate
+
+echo "✅ 数据库同步完成"
+```
+
+### Step 5: 处理 instrumentation.ts（如需要）
+
+```bash
+cd /var/www/my-app-prod
+
+# 检查是否需要临时禁用
+if sudo grep -q "instrumentation" src/instrumentation.ts 2>/dev/null; then
+  echo "⚠️  发现 instrumentation.ts，如构建失败需临时禁用"
+fi
+```
+
+### Step 6: 构建生产版本
+
+```bash
+cd /var/www/my-app-prod
+
+# 确保启用 standalone 模式
+if ! sudo grep -q "output: 'standalone'" next.config.js; then
+  echo "⚠️  next.config.js 未启用 standalone，正在修改..."
+  sudo sed -i "s|// output: 'standalone'|output: 'standalone'|" next.config.js
 fi
 
-# 确认数据库文件存在
-ls -lh prisma/dev.db
+# 清理缓存
+sudo rm -rf .next node_modules/.cache
+
+# 构建
+sudo npm run build
+
+echo "✅ 构建完成"
 ```
 
-**如果数据库文件不存在**:
+### Step 7: 复制静态资源
+
 ```bash
-# 从最新备份恢复
-latest_backup=$(ls -t prisma/dev.db.backup.* | head -1)
-if [ -f "$latest_backup" ]; then
-  cp "$latest_backup" prisma/dev.db
-  echo "已从备份恢复: $latest_backup"
+cd /var/www/my-app-prod
+
+# 复制资源
+sudo cp -r .next/static .next/standalone/.next/
+sudo cp -r public .next/standalone/ 2>/dev/null || true
+sudo cp .env .next/standalone/.env
+
+# 验证文件
+echo "=== standalone 目录验证 ==="
+ls -la .next/standalone/ | head -15
+
+echo "✅ 资源复制完成"
+```
+
+### Step 8: 健康检查（启动前）
+
+```bash
+cd /var/www/my-app-prod
+
+# 测试构建产物
+node .next/standalone/server.js &
+SERVER_PID=$!
+sleep 5
+
+# 测试 API
+curl -s http://localhost:3000/api/data/latest-date
+TEST_RESULT=$?
+
+# 停止测试服务
+kill $SERVER_PID 2>/dev/null
+
+if [ $TEST_RESULT -eq 0 ]; then
+  echo "✅ 健康检查通过"
 else
-  echo "❌ 错误: 没有备份文件,无法恢复数据库!"
+  echo "❌ 健康检查失败，请查看日志"
   exit 1
 fi
 ```
 
-### 第5步: 检查.env文件
+### Step 9: 滚动重启服务（零停机）
 
 ```bash
-# 验证.env文件存在
-ls -la .env
+cd /var/www/my-app-prod
 
-# 如果不存在,必须创建(见下方.env模板)
-```
+# 方式 1：使用 PM2 零停机重启
+sudo pm2 reload smxgc-vibe-prod --update-env
 
-### 第6步: 同步数据库
+# 方式 2：如果 reload 失败，使用 stop/start
+# sudo pm2 stop smxgc-vibe-prod
+# sleep 2
+# PORT=3000 sudo pm2 start .next/standalone/server.js --name "smxgc-vibe-prod"
+# sudo pm2 save
 
-```bash
-npx prisma db push
-npx prisma generate
-```
-
-### 第7步: 清理并构建
-
-```bash
-rm -rf .next
-npm run build
-```
-
-### 第8步: 复制必要文件到standalone
-
-```bash
-# 复制静态资源
-cp -r .next/static .next/standalone/.next/
-
-# 复制环境变量(关键!)
-cp .env .next/standalone/
-
-# 复制pages目录(包含_error.js)
-mkdir -p .next/standalone/.next/server/pages
-cp -r .next/server/pages/* .next/standalone/.next/server/pages/ 2>/dev/null || true
-```
-
-### 第9步: 重启服务
-
-```bash
-# 生产环境
-PORT=3002 pm2 restart smxgc-vibe
-
-# 测试环境
-PORT=7371 pm2 restart smxgc-vibe-test
-
-# 保存PM2配置
-pm2 save
-```
-
-### 第9步: 验证代码版本(关键!)
-
-```bash
-# 确认部署的是最新代码
-git log --oneline -1
-
-# 对比本地开发环境的commit hash
-cd /var/www/my-app
-git log --oneline -1
-```
-
-**必须**: 生产环境的commit hash与本地`git log origin/master -1`一致!
-
-### 第10步: 等待并验证
-
-```bash
+# 等待服务启动
 sleep 5
 
-# 测试本地访问
-curl -s -o /dev/null -w "HTTP状态码: %{http_code}\n" http://localhost:3002
+# 查看服务状态
+pm2 status smxgc-vibe-prod
 
-# 检查PM2状态
-pm2 list
-
-# 测试API
-curl -s http://localhost:3002/api/admin/status | python3 -m json.tool
+echo "✅ 服务已重启"
 ```
 
-### 第12步: 验证数据完整性(关键!)
-
-**防止数据丢失的最后防线!**
+### Step 10: 验证部署
 
 ```bash
-# 检查用户数据
-echo "=== 用户数据 ==="
-sqlite3 prisma/dev.db "SELECT COUNT(*) as user_count FROM User;"
-sqlite3 prisma/dev.db "SELECT id, email, realName, status FROM User LIMIT 5;"
+# 等待服务完全启动
+sleep 5
 
-# 检查业务数据
-echo "=== 业务数据 ==="
-sqlite3 prisma/dev.db "SELECT COUNT(*) as product_count FROM FundProduct;"
-sqlite3 prisma/dev.db "SELECT MAX(dataDate) as latest_date FROM FundProduct;"
+echo "=== 部署验证 ==="
 
-# 与备份对比(可选)
-if [ -f "$latest_backup" ]; then
-  echo "=== 备份数据对比 ==="
-  echo "备份用户数:"
-  sqlite3 "$latest_backup" "SELECT COUNT(*) FROM User;"
-  echo "备份产品数:"
-  sqlite3 "$latest_backup" "SELECT COUNT(*) FROM FundProduct;"
-fi
+# 1. 测试 API
+echo "1. 测试 API 响应..."
+curl -s http://localhost:3000/api/data/latest-date
+echo ""
+
+# 2. 测试用户认证
+echo "2. 测试用户认证..."
+curl -s http://localhost:3000/api/auth/me \
+  -H "Authorization: Bearer YOUR_TEST_TOKEN"
+echo ""
+
+# 3. 检查服务日志
+echo "3. 检查服务日志..."
+sudo pm2 logs smxgc-vibe-prod --lines 20 --nostream | grep -E "(error|Error|ERROR|ready|Ready)" | tail -10
+
+# 4. 验证数据库连接
+echo "4. 验证数据库..."
+sudo sqlite3 prisma/dev.db "SELECT COUNT(*) as user_count FROM User;"
+
+echo ""
+echo "===================================="
+echo "✅ 生产环境部署完成!"
+echo "===================================="
+echo "访问地址: https://your-production-domain.com"
+echo "服务状态: pm2 status smxgc-vibe-prod"
+echo "查看日志: sudo pm2 logs smxgc-vibe-prod --lines 50"
+echo ""
+echo "⚠️  重要：请验证以下功能"
+echo "   1. 用户登录正常"
+echo "   2. 数据展示正常"
+echo "   3. 管理员权限正常"
 ```
 
-**如果数据量异常减少**:
+### Step 11: 部署后监控
+
 ```bash
-echo "⚠️ 警告: 数据量异常,立即从备份恢复!"
-cp "$latest_backup" prisma/dev.db
-pm2 restart smxgc-vibe
-exit 1
+# 持续监控服务 10 分钟
+sudo pm2 logs smxgc-vibe-prod --lines 50
+
+# 查看服务资源使用
+pm2 monit
+
+# 检查错误日志
+sudo tail -f /root/.pm2/logs/smxgc-vibe-prod-error.log
 ```
 
-### 第13步: 验证浏览器缓存已清除(关键!)
+## 回滚流程
 
-**这是之前部署失败的主要原因!**
-
-1. 访问生产URL: `http://your-server-ip`
-2. 按F12打开开发者工具
-3. 切换到Network标签
-4. 刷新页面
-5. **检查JS文件的build ID**:
-   - 查看 `_next/static/chunks/` 下的JS文件名
-   - 确认包含新的build ID(时间戳)
-   - 如果仍是旧的build ID,说明缓存未清除
-
-**如果缓存未清除:**
-- 在浏览器按 `Ctrl+Shift+Delete`
-- 选择"全部时间"
-- 勾选"缓存的图像和文件"
-- 点击"清除数据"
-- 或使用无痕模式验证
-
-## .env文件模板
+### 如果部署失败，立即回滚
 
 ```bash
-DATABASE_URL="file:/var/www/my-app/prisma/dev.db"
-JWT_SECRET="your-jwt-secret-key-change-this-in-production"
-ADMIN_PASSWORD="habtot-mevxop-5Qekbu"
-SMTP_HOST="smtp.163.com"
-SMTP_PORT="465"
-SMTP_USER="smxgc_nav_sever@163.com"
-SMTP_PASS="LEgFszv7RxdtfCsK"
-NEXT_PUBLIC_API_URL="http://122.51.51.46"
-```
+cd /var/www/my-app-prod
 
-**注意**: DATABASE_URL必须使用绝对路径!
-
-## 常见问题排查
-
-### 问题1: API返回500错误
-**原因**: `.env`文件缺失或DATABASE_URL配置错误
-**解决**: 
-```bash
-cat .env | grep DATABASE_URL
-# 确认使用绝对路径: file:/var/www/my-app/prisma/dev.db
-```
-
-### 问题2: 页面显示异常(图标变大/数据为空)
-**原因**: 浏览器强缓存未清除
-**解决**: 清除浏览器缓存,使用F12验证JS文件版本
-
-### 问题3: Prisma报错列不存在
-**原因**: 数据库schema未同步
-**解决**: `npx prisma db push`
-
-### 问题4: Nginx返回旧页面
-**原因**: sites-enabled链接了旧配置文件
-**解决**: 检查并修正软链接
-
-## 自动化部署脚本
-
-使用 `scripts/deploy.sh` 脚本可以一键完成部署:
-
-```bash
-# 生产环境部署
-bash scripts/deploy.sh production
-
-# 测试环境部署
-bash scripts/deploy.sh test
-```
-
-脚本会自动执行:
-1. 验证Nginx配置
-2. 检查.env文件
-3. 拉取代码
-4. 同步数据库
-5. 构建应用
-6. 复制文件
-7. 重启服务
-8. 验证部署
-
-## 部署后验证清单
-
-部署完成后,**必须逐项勾选**:
-
-- [ ] **HTTP状态码返回200**
-- [ ] **PM2进程状态为online**
-- [ ] **API正常返回数据**
-- [ ] **代码版本正确**: `git log --oneline -1` 与本地一致
-- [ ] **数据库文件存在**: `ls -lh prisma/dev.db`
-- [ ] **用户数据完整**: `sqlite3 prisma/dev.db "SELECT COUNT(*) FROM User;"`
-- [ ] **业务数据完整**: `sqlite3 prisma/dev.db "SELECT COUNT(*) FROM FundProduct;"`
-- [ ] **备份文件已创建**: `ls -lh prisma/dev.db.backup.*`
-- [ ] **浏览器F12确认加载的是新版本JS**
-- [ ] **核心功能测试通过**(登录、数据展示)
-- [ ] **Nginx错误日志无异常**: `tail -n 20 /var/log/nginx/error.log`
-
-## 回滚方案
-
-如果部署失败,快速回滚:
-
-```bash
 # 1. 停止当前服务
-pm2 stop smxgc-vibe
+sudo pm2 stop smxgc-vibe-prod
 
-# 2. 检查Git历史
-git log --oneline -5
+# 2. 恢复上一个版本的代码
+sudo git reset --hard HEAD~1  # 或指定 commit hash
 
-# 3. 回退到上一个版本
-git reset --hard HEAD~1
+# 3. 恢复数据库（如果需要）
+# sudo cp backups/LATEST/dev.db.backup prisma/dev.db
 
 # 4. 重新构建
-rm -rf .next && npm run build
-cp -r .next/static .next/standalone/.next/
-cp .env .next/standalone/
+sudo rm -rf .next
+sudo npm run build
+sudo cp -r .next/static .next/standalone/.next/
+sudo cp .env .next/standalone/.env
 
 # 5. 重启服务
-PORT=3002 pm2 restart smxgc-vibe
+PORT=3000 sudo pm2 start .next/standalone/server.js --name "smxgc-vibe-prod"
+sudo pm2 save
+
+echo "✅ 已回滚到上一个版本"
 ```
 
-## 关键教训
+## 常见问题
 
-1. **永远不要假设部署成功** - 必须实际验证每个步骤
-2. **Nginx配置以sites-enabled为准** - 修改sites-available后必须确认链接正确
-3. **浏览器缓存是最大陷阱** - 部署后必须用F12验证资源版本
-4. **.env文件不会自动创建** - Git不追踪,必须手动创建
-5. **数据库必须同步** - schema变更后立即执行db push
-6. **代码版本必须验证** - 部署后检查git log,确认是最新commit
-7. **SQLite数据库禁止提交Git** - .gitignore必须包含*.db,防止部署时覆盖数据
-8. **部署前必须备份数据库** - 每次部署前先cp备份,带时间戳
-9. **部署后验证数据完整性** - 对比备份前后数据量,异常立即恢复
-10. **Git追踪数据库是致命错误** - dev.db被标记为deleted时,git pull会直接删除文件
+### 1. 数据库迁移失败
+
+**问题**：`P3005 The database schema is not empty`
+
+**解决**：
+```bash
+# 先 baseline 现有数据库
+sudo npx prisma migrate resolve --applied FIRST_MIGRATION_NAME
+sudo npx prisma migrate deploy
+```
+
+### 2. 构建失败 - MODULE_NOT_FOUND
+
+**问题**：`Cannot find module './instrumentation.node.mjs'`
+
+**解决**：
+```bash
+sudo mv src/instrumentation.ts src/instrumentation.ts.bak
+sudo rm -rf .next && sudo npm run build
+sudo mv src/instrumentation.ts.bak src/instrumentation.ts
+```
+
+### 3. 用户数据丢失
+
+**问题**：部署后用户无法登录
+
+**解决**：
+```bash
+# 从备份恢复用户数据
+cd backups/LATEST_BACKUP
+sqlite3 ../prisma/dev.db ".mode csv" ".import users.csv User"
+```
+
+### 4. 服务启动失败
+
+**问题**：PM2 显示 stopped 或 errored
+
+**解决**：
+```bash
+# 查看详细错误
+sudo pm2 logs smxgc-vibe-prod --err
+
+# 检查端口占用
+sudo lsof -i :3000
+
+# 手动测试启动
+cd /var/www/my-app-prod
+PORT=3000 node .next/standalone/server.js
+```
+
+## 重要提醒
+
+1. **⚠️ 部署前必须备份用户数据和数据库**
+2. **⚠️ 在低峰时段部署（建议晚上或周末）**
+3. **⚠️ 准备好回滚方案再开始部署**
+4. **⚠️ 使用 sudo 执行所有命令**
+5. **⚠️ 部署后验证用户登录和权限**
+6. **⚠️ 保留至少 3 个版本的备份**
+7. **⚠️ 通知用户可能的停机时间**
+8. **⚠️ 监控服务至少 30 分钟**
+
+## 部署检查清单
+
+部署完成后确认：
+
+- [ ] 数据库备份完成
+- [ ] 用户数据导出完成
+- [ ] 代码同步成功
+- [ ] 依赖安装完成
+- [ ] 数据库迁移完成
+- [ ] 构建成功
+- [ ] 资源复制完成
+- [ ] 服务重启成功
+- [ ] API 响应正常
+- [ ] 用户登录正常
+- [ ] 权限验证通过
+- [ ] 错误日志无异常
+- [ ] 监控 30 分钟无问题

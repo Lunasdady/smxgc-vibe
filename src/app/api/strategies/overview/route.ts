@@ -195,11 +195,12 @@ export async function GET(request: Request) {
           .filter((v: number | null): v is number => v !== null && v !== undefined && !isNaN(v));
         
         const stats = calculateFiveNumberStats(values);
+        const resolvedGroupName = groupName ?? '';
         strategies.push({
           strategyType,
           strategyName,
           groupName,
-          groupSortOrder: primarySortOrder.get(groupName) ?? 999, // 默认排序值
+          groupSortOrder: primarySortOrder.get(resolvedGroupName) ?? 999, // 默认排序值
           totalCount: products.length,
           ...stats,
         });
@@ -217,12 +218,12 @@ export async function GET(request: Request) {
           .filter((v: number | null): v is number => v !== null && v !== undefined && !isNaN(v));
 
         const stats = calculateFiveNumberStats(values);
-
+        const resolvedGroupName = groupName ?? '';
         strategies.push({
           strategyType,
           strategyName,
           groupName,
-          groupSortOrder: primarySortOrder.get(groupName) ?? 999, // 默认排序值
+          groupSortOrder: primarySortOrder.get(resolvedGroupName) ?? 999, // 默认排序值
           totalCount: products.length,
           ...stats,
         });

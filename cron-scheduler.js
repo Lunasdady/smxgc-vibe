@@ -58,6 +58,7 @@ function initScheduler() {
 /**
  * 自动计算收益指标
  * 通过调用本地 API 复用已有的计算逻辑
+ * 仅计算周五或节假日前工作日的数据
  */
 async function autoCalculateMetrics() {
   try {
@@ -76,23 +77,37 @@ async function autoCalculateMetrics() {
     
     const fundProductDateSet = new Set(fundProductDates.map(d => Number(d.dataDate)));
     
-    const missingDates = navDates
+    // 过滤：只保留周五或节假日前工作日
+    const validDates = navDates
       .map(d => Number(d.navDate))
-      .filter(timestamp => !fundProductDateSet.has(timestamp));
+      .filter(timestamp => {
+        const date = dayjs(timestamp);
+        const dayOfWeek = date.day(); // 0=周日, 5=周五, 6=周六
+        
+        // 如果是周五，保留
+        if (dayOfWeek === 5) return true;
+        
+        // TODO: 节假日判断逻辑（需要维护节假日列表）
+        // 暂时只保留周五
+        return false;
+      });
+    
+    const missingDates = validDates.filter(timestamp => !fundProductDateSet.has(timestamp));
     
     if (missingDates.length === 0) {
-      console.log('✅ 所有日期的指标已计算，无需补充');
+      console.log('✅ 所有周五的指标已计算，无需补充');
       return;
     }
     
-    console.log('📅 发现 ' + missingDates.length + ' 个日期需要计算指标');
+    console.log('📅 发现 ' + missingDates.length + ' 个周五需要计算指标');
     
     // 调用 PUT API 来计算指标（复用已有的 API 逻辑）
     const fetch = require('node-fetch');
     
     for (const timestamp of missingDates) {
       const dateStr = dayjs(timestamp).format('YYYY-MM-DD');
-      console.log('🧮 计算 ' + dateStr + ' 的收益指标...');
+      const dayName = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'][dayjs(timestamp).day()];
+      console.log('🧮 计算 ' + dateStr + ' (' + dayName + ') 的收益指标...');
       
       try {
         // 调用本地的 calculate-metrics API

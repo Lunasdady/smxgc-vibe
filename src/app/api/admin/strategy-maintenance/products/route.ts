@@ -2,24 +2,24 @@ import { NextResponse } from 'next/server';
 import prisma from '@/lib/db';
 
 /**
- * 获取产品列表（显示15天内有净值更新的产品）
+ * 获取产品列表（显示30天内有净值更新的产品）
  */
 export async function GET() {
   try {
-    console.log('🔍 开始查询15天内有净值的产品...');
+    console.log('🔍 开始查询30天内有净值的产品...');
     
-    // 计算15天前的日期
-    const fifteenDaysAgo = new Date();
-    fifteenDaysAgo.setDate(fifteenDaysAgo.getDate() - 15);
-    fifteenDaysAgo.setHours(0, 0, 0, 0); // 设置为当天0点
+    // 计算30天前的日期
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    thirtyDaysAgo.setHours(0, 0, 0, 0); // 设置为当天0点
     
-    console.log(`📅 15天前日期: ${fifteenDaysAgo.toLocaleDateString('zh-CN')}`);
+    console.log(`📅 30天前日期: ${thirtyDaysAgo.toLocaleDateString('zh-CN')}`);
     
-    // 查询15天内有净值的所有记录
+    // 查询30天内有净值的所有记录
     const recentNavData = await prisma.navData.findMany({
       where: {
         navDate: {
-          gte: fifteenDaysAgo,
+          gte: thirtyDaysAgo,
         },
       },
       select: {
@@ -32,7 +32,7 @@ export async function GET() {
       },
     });
 
-    console.log(`📊 获取到 ${recentNavData.length} 条15天内的净值记录`);
+    console.log(`📊 获取到 ${recentNavData.length} 条30天内的净值记录`);
 
     // 手动groupBy，每个产品只保留最新的净值
     const productMap = new Map<string, any>();

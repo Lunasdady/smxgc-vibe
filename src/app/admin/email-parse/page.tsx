@@ -3,9 +3,10 @@
 import { useState, useEffect, useRef } from 'react';
 import Pagination from '@/components/Pagination';
 import AdminTabs from '@/app/admin/_components/AdminTabs';
+import ManualNavTab from './manual-nav-tab';
 
 export default function EmailParsePage() {
-  const [activeTab, setActiveTab] = useState<'configs' | 'results' | 'nav'>('configs');
+  const [activeTab, setActiveTab] = useState<'configs' | 'results' | 'nav' | 'manual'>('configs');
   
   // 解析状态提升到父组件,避免切换Tab丢失
   const [parseingId, setParseingId] = useState<number | null>(null);
@@ -102,6 +103,16 @@ export default function EmailParsePage() {
           >
             净值数据
           </button>
+          <button
+            onClick={() => setActiveTab('manual')}
+            className={`px-4 py-2 text-[14px] font-medium transition-colors ${
+              activeTab === 'manual'
+                ? 'text-[#0071E3] border-b-2 border-[#0071E3]'
+                : 'text-[#86868B] hover:text-[#1D1D1F]'
+            }`}
+          >
+            手工维护
+          </button>
         </div>
 
         {/* 内容区域 */}
@@ -115,6 +126,7 @@ export default function EmailParsePage() {
         )}
         {activeTab === 'results' && <ParseResultsTab />}
         {activeTab === 'nav' && <NavDataTab />}
+        {activeTab === 'manual' && <ManualNavTab />}
       </main>
     </div>
   );

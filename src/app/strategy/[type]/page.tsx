@@ -34,12 +34,15 @@ export default function StrategyPage({ params }: StrategyPageProps) {
   const [currentPage, setCurrentPage] = useState(1);
   const [mobileColumn, setMobileColumn] = useState<keyof FundProduct>('weeklyReturn');
   const [isTableFullscreen, setIsTableFullscreen] = useState(false);
+  const [categoryFilter, setCategoryFilter] = useState(''); // 策略分类筛选
+  const [subcategories, setSubcategories] = useState<string[]>([]); // 动态获取的二级策略列表
   const pageSize = 20;
 
   // 只初始化一次
   const initializedRef = useRef(false);
 
-  const strategyType = params.type;
+  // 解码 URL 中的中文字符
+  const strategyType = decodeURIComponent(params.type);
 
   // 使用动态指标字段
   const metricFields = getMetricFields(dataDate, strategyType);
@@ -66,17 +69,23 @@ export default function StrategyPage({ params }: StrategyPageProps) {
       if (strategyType === 'quantitative-futures') return STRATEGY_NAME_MAP['quantitative-cta'];
     }
     
+    // 自定义策略：从 custom-xxx 中提取名称
+    if (strategyType.startsWith('custom-')) {
+      return strategyType.replace('custom-', '');
+    }
+    
     return STRATEGY_NAME_MAP[strategyType] || strategyType;
   };
   
   const strategyName = getActualStrategyName();
 
-  // 当日期或策略类型变化时，重置排序字段为当前指标字段列表的第一个
+  // 当日期或策略类型变化时，重置排序字段和分类筛选
   useEffect(() => {
     const defaultField = metricFields[0]?.key as keyof FundProduct || 'weeklyReturn';
     setSortBy(defaultField);
     setMobileColumn(defaultField);
     setCurrentPage(1);
+    setCategoryFilter(''); // 切换策略时重置分类筛选
   }, [dataDate, strategyType, metricFields]);
   
   // 动态数据列（根据日期和策略类型生成）
@@ -119,6 +128,22 @@ export default function StrategyPage({ params }: StrategyPageProps) {
     checkPermission();
   }, [router]);
 
+  // 动态获取二级策略列表（策略字典驱动）
+  useEffect(() => {
+    const fetchSubcategories = async () => {
+      try {
+        const res = await fetch(`/api/strategies/subcategories?strategyType=${encodeURIComponent(strategyType)}`);
+        if (res.ok) {
+          const data = await res.json();
+          setSubcategories(data.subcategories || []);
+        }
+      } catch (error) {
+        console.error('获取二级策略列表失败:', error);
+      }
+    };
+    fetchSubcategories();
+  }, [strategyType]);
+
   useEffect(() => {
     if (!dataDate) return;
     
@@ -127,11 +152,12 @@ export default function StrategyPage({ params }: StrategyPageProps) {
     const fetchData = async () => {
       setLoading(true);
       try {
+        const categoryParam = categoryFilter ? `&category=${encodeURIComponent(categoryFilter)}` : '';
         const [summaryRes, productsRes] = await Promise.all([
           fetch(`/api/strategies/${strategyType}/group-summary?dataDate=${dataDate}&metric=${actualMetric}`, {
             signal: controller.signal
           }),
-          fetch(`/api/strategies/${strategyType}/products?dataDate=${dataDate}&page=1&limit=1000`, {
+          fetch(`/api/strategies/${strategyType}/products?dataDate=${dataDate}&page=1&limit=1000${categoryParam}`, {
             signal: controller.signal
           }),
         ]);
@@ -156,7 +182,7 @@ export default function StrategyPage({ params }: StrategyPageProps) {
     fetchData();
     
     return () => controller.abort();
-  }, [dataDate, strategyType, actualMetric]);
+  }, [dataDate, strategyType, actualMetric, categoryFilter]);
 
   // Force reveal after data loads (same as homepage fix)
   useEffect(() => {
@@ -171,9 +197,10 @@ export default function StrategyPage({ params }: StrategyPageProps) {
   const fetchData = async (metricToFetch: string) => {
     setLoading(true);
     try {
+      const categoryParam = categoryFilter ? `&category=${encodeURIComponent(categoryFilter)}` : '';
       const [summaryRes, productsRes] = await Promise.all([
         fetch(`/api/strategies/${strategyType}/group-summary?dataDate=${dataDate}&metric=${metricToFetch}`),
-        fetch(`/api/strategies/${strategyType}/products?dataDate=${dataDate}&page=1&limit=1000`),
+        fetch(`/api/strategies/${strategyType}/products?dataDate=${dataDate}&page=1&limit=1000${categoryParam}`),
       ]);
       // 权限被撤销时重定向
       if (summaryRes.status === 403 || productsRes.status === 403) {
@@ -201,7 +228,13 @@ export default function StrategyPage({ params }: StrategyPageProps) {
   };
 
   const filteredProducts = products
-    .filter((p) => p.fundManager.toLowerCase().includes(searchTerm.toLowerCase()))
+    .filter((p) => {
+      const term = searchTerm.toLowerCase();
+      return (
+        p.fundManager.toLowerCase().includes(term) ||
+        p.productName.toLowerCase().includes(term)
+      );
+    })
     .sort((a, b) => {
       const aVal = a[sortBy] ?? 0;
       const bVal = b[sortBy] ?? 0;
@@ -278,11 +311,34 @@ export default function StrategyPage({ params }: StrategyPageProps) {
               <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6 pb-6 border-b border-[#0000000D]">
                 <h2 className="text-[24px] font-semibold text-[#1D1D1F] tracking-tight">产品明细</h2>
                 <div className="flex items-center gap-3 flex-wrap">
+                  {/* 策略分类筛选器 */}
+                  {subcategories.length > 0 && (
+                    <div className="relative">
+                      <select
+                        value={categoryFilter}
+                        onChange={(e) => {
+                          setCategoryFilter(e.target.value);
+                          setCurrentPage(1);
+                        }}
+                        className="pl-4 pr-8 py-2 bg-[#FFFFFF] border border-[#0000000D] rounded-full text-[14px] text-[#1D1D1F] focus:outline-none focus:ring-2 focus:ring-[#0071E3]/30 transition-all appearance-none cursor-pointer hover:border-[#0000001A]"
+                      >
+                        <option value="">全部策略分类</option>
+                        {subcategories.map((cat) => (
+                          <option key={cat} value={cat}>{cat}</option>
+                        ))}
+                      </select>
+                      <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none">
+                        <svg className="w-4 h-4 text-[#86868B]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                        </svg>
+                      </div>
+                    </div>
+                  )}
                   <div className="relative">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#86868B] pointer-events-none" />
                     <input
                       type="text"
-                      placeholder="搜索基金管理人..."
+                      placeholder="搜索管理人或产品名称..."
                       value={searchTerm}
                       onChange={(e) => {
                         setSearchTerm(e.target.value);
@@ -362,6 +418,7 @@ export default function StrategyPage({ params }: StrategyPageProps) {
                             <TrendTooltip 
                               productCode={product.productCode}
                               productName={product.productName}
+                              date={dataDate || undefined}
                             >
                               <button className="p-2 rounded-lg hover:bg-[#0071E3]/10 transition-all group">
                                 <TrendingUp className="w-4 h-4 text-[#0071E3] group-hover:scale-110 transition-transform" />
@@ -448,11 +505,34 @@ export default function StrategyPage({ params }: StrategyPageProps) {
                 <p className="text-[13px] text-[#86868B] mt-1">{filteredProducts.length} 只产品 · {currentMetric.label}</p>
               </div>
               <div className="flex items-center gap-3">
+                {/* 全屏模式下的策略分类筛选器 */}
+                {subcategories.length > 0 && (
+                  <div className="relative">
+                    <select
+                      value={categoryFilter}
+                      onChange={(e) => {
+                        setCategoryFilter(e.target.value);
+                        setCurrentPage(1);
+                      }}
+                      className="pl-4 pr-8 py-2 bg-[#FFFFFF] border border-[#0000000D] rounded-full text-[14px] text-[#1D1D1F] focus:outline-none focus:ring-2 focus:ring-[#0071E3]/30 transition-all appearance-none cursor-pointer hover:border-[#0000001A]"
+                    >
+                      <option value="">全部策略分类</option>
+                      {subcategories.map((cat) => (
+                        <option key={cat} value={cat}>{cat}</option>
+                      ))}
+                    </select>
+                    <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none">
+                      <svg className="w-4 h-4 text-[#86868B]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                      </svg>
+                    </div>
+                  </div>
+                )}
                 <div className="relative">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#86868B] pointer-events-none" />
                   <input
                     type="text"
-                    placeholder="搜索基金管理人..."
+                    placeholder="搜索管理人或产品名称..."
                     value={searchTerm}
                     onChange={(e) => {
                       setSearchTerm(e.target.value);
@@ -508,6 +588,7 @@ export default function StrategyPage({ params }: StrategyPageProps) {
                           <TrendTooltip 
                             productCode={product.productCode}
                             productName={product.productName}
+                            date={dataDate || undefined}
                           >
                             <button className="p-2 rounded-lg hover:bg-[#0071E3]/10 transition-all group">
                               <TrendingUp className="w-4 h-4 text-[#0071E3] group-hover:scale-110 transition-transform" />

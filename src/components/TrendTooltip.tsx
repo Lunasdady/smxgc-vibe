@@ -8,6 +8,7 @@ import dayjs from 'dayjs';
 interface TrendTooltipProps {
   productCode: string;
   productName?: string;
+  date?: string; // 指定日期（YYYY-MM-DD），传入时只显示该日期的净值
   children: React.ReactNode;
 }
 
@@ -22,7 +23,7 @@ interface NavDataPoint {
  * 鼠标悬停显示近6个月净值折线图
  * 使用 createPortal 渲染到 body，避免被 overflow 容器裁剪
  */
-export default function TrendTooltip({ productCode, productName, children }: TrendTooltipProps) {
+export default function TrendTooltip({ productCode, productName, date, children }: TrendTooltipProps) {
   const [visible, setVisible] = useState(false);
   const [navData, setNavData] = useState<NavDataPoint[]>([]);
   const [loading, setLoading] = useState(false);
@@ -38,7 +39,8 @@ export default function TrendTooltip({ productCode, productName, children }: Tre
       setError(null);
       
       try {
-        const response = await fetch(`/api/product/trend?productCode=${encodeURIComponent(productCode)}&months=6`);
+        const dateParam = date ? `&date=${encodeURIComponent(date)}` : '';
+        const response = await fetch(`/api/product/trend?productCode=${encodeURIComponent(productCode)}${dateParam}`);
         
         if (!response.ok) {
           throw new Error('获取走势数据失败');
@@ -111,7 +113,7 @@ export default function TrendTooltip({ productCode, productName, children }: Tre
             {productName || productCode}
           </div>
           <div className="text-[11px] text-[#86868B] mt-0.5">
-            近6个月单位净值走势
+            {date ? `截至 ${date} 的近6个月净值走势` : '近6个月单位净值走势'}
           </div>
         </div>
 

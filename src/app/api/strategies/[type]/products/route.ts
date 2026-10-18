@@ -25,22 +25,10 @@ export async function GET(
     const search = searchParams.get('search') || '';
     const sortBy = searchParams.get('sortBy') || 'weeklyReturn';
     const order = searchParams.get('order') || 'desc';
-
-    // 如果没有指定日期，使用最新日期
-    if (!dataDate) {
-      const latest = await prisma.fundProduct.findFirst({
-        orderBy: { dataDate: 'desc' },
-        select: { dataDate: true },
-      });
-      dataDate = latest ? dayjs(latest.dataDate).format('YYYY-MM-DD') : null;
-    }
-
-    if (!dataDate) {
-      return NextResponse.json({ products: [], total: 0, page, limit, totalPages: 0 });
-    }
+    const category = searchParams.get('category') || ''; // 策略分类（二级策略）筛选
 
     // 根据日期动态映射策略类型（CTA <-> 期货）
-    const date = new Date(dataDate);
+    const date = new Date(dataDate || new Date());
     const cutoffDate = new Date(FUTURES_CUTOFF_DATE);
     let actualStrategyType = strategyType;
     
@@ -59,6 +47,19 @@ export async function GET(
       else if (strategyType === 'quantitative-futures') actualStrategyType = 'quantitative-cta';
     }
 
+    // 如果没有指定日期，使用该策略类型下最新产品的日期
+    if (!dataDate) {
+      const latestResult = await prisma.$queryRawUnsafe<{ maxDate: number }[]>(
+        `SELECT MAX(dataDate) as maxDate FROM FundProduct WHERE strategyType = '${actualStrategyType}'`
+      );
+      const maxDate = latestResult[0]?.maxDate;
+      dataDate = maxDate ? dayjs(maxDate).format('YYYY-MM-DD') : null;
+    }
+
+    if (!dataDate) {
+      return NextResponse.json({ products: [], total: 0, page, limit, totalPages: 0 });
+    }
+
     // 将日期转为 Unix 时间戳（毫秒），因为数据库中 dataDate 存的是整数
     const targetTimestamp = new Date(dataDate + 'T00:00:00.000Z').getTime();
 
@@ -66,6 +67,11 @@ export async function GET(
     let whereClause = `WHERE dataDate = ${targetTimestamp} AND strategyType = '${actualStrategyType}'`;
     if (search) {
       whereClause += ` AND fundManager LIKE '%${search.replace(/'/g, "''")}%'`;
+    }
+    // 按策略分类（二级策略）筛选：通过productName关联StrategyMapping
+    if (category) {
+      const escapedCategory = category.replace(/'/g, "''");
+      whereClause += ` AND productName IN (SELECT productName FROM StrategyMapping WHERE secondaryStrategy = '${escapedCategory}')`;
     }
 
     // 查询总数

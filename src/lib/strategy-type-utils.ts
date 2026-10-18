@@ -50,6 +50,15 @@ export function getStrategyType(primaryStrategy: string, secondaryStrategy: stri
   // 强势股
   if (ps.includes('强势股') || ss.includes('强势股')) return 'strong-stock';
 
-  // 默认返回空字符串
+  // 默认：自定义策略优先使用二级策略名称，其次一级策略名称
+  // 这样自定义策略在概览页显示的是二级策略卡片
+  if (ss && ss !== ps) {
+    return `custom-${ss.toLowerCase().replace(/\s+/g, '-')}`;
+  }
+  if (ps) {
+    return `custom-${ps.toLowerCase().replace(/\s+/g, '-')}`;
+  }
+
+  // 如果都为空，返回空字符串
   return '';
 }

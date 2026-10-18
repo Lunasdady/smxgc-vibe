@@ -32,7 +32,39 @@ export async function POST(request: Request) {
     }
 
     // 获取近6个月的净值数据
-    const targetDate = dataDate ? new Date(dataDate) : new Date();
+    // 如果没有指定 dataDate，自动使用产品的最新净值日期
+    let targetDate: Date;
+    
+    if (dataDate) {
+      targetDate = new Date(dataDate);
+    } else {
+      // 查找该产品的最新净值日期
+      const latestNav = await prisma.navData.findFirst({
+        where: { productCode },
+        orderBy: { navDate: 'desc' },
+        select: { navDate: true },
+      });
+      
+      if (!latestNav) {
+        return NextResponse.json(
+          { error: '无净值数据，无法计算指标' },
+          { status: 400 }
+        );
+      }
+      
+      // 直接使用 navDate 数值，避免时区转换
+      // navDate 是 BigInt（毫秒），表示 UTC 时间
+      // 提取年月日，创建 UTC 午夜的 Date 对象
+      const navDateMs = Number(latestNav.navDate);
+      const navDateObj = new Date(navDateMs);
+      const year = navDateObj.getUTCFullYear();
+      const month = navDateObj.getUTCMonth();
+      const day = navDateObj.getUTCDate();
+      
+      // 创建 UTC 午夜的 Date 对象
+      targetDate = new Date(Date.UTC(year, month, day));
+    }
+    
     const startDate = dayjs(targetDate).subtract(6, 'month').toDate();
 
     const navData = await prisma.navData.findMany({
@@ -198,7 +230,15 @@ function getStrategyType(primaryStrategy: string, secondaryStrategy: string): st
     return 'quantitative-cta';
   }
 
-  // 默认返回指增500
+  // 默认：自定义策略优先使用二级策略名称，其次一级策略名称
+  if (ss && ss !== ps) {
+    return `custom-${ss.toLowerCase().replace(/\s+/g, '-')}`;
+  }
+  if (ps) {
+    return `custom-${ps.toLowerCase().replace(/\s+/g, '-')}`;
+  }
+
+  // 如果都为空，返回指增500
   return 'index-enhanced-500';
 }
 

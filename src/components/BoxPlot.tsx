@@ -8,7 +8,7 @@ import { formatValue } from '@/lib/stats';
 
 interface BoxPlotProps {
   strategy: StrategyOverview;
-  onClick: () => void;
+  onClick?: () => void;
   groupName?: string;
   metric?: string;
   metricName?: string;
@@ -26,9 +26,29 @@ export default function BoxPlot({ strategy, onClick, groupName, metric, metricNa
   const svgRef = useRef<SVGSVGElement>(null);
   const cardRef = useRef<HTMLDivElement>(null);
 
-  const { strategyType, strategyName, count, min, q25, median, q75, max } = strategy;
+  const { strategyType, strategyName, count, totalCount, min, q25, median, q75, max } = strategy;
+  const productCount = totalCount || count;
 
+  // 有产品但无有效统计数据时，显示简化版本
   if (count === 0) {
+    if (productCount > 0) {
+      return (
+        <div className="group relative cursor-pointer" onClick={onClick}>
+          <div className="flex justify-between items-start mb-4">
+            <div className="flex items-center gap-2.5">
+              <div className="w-2 h-2 rounded-full bg-[#0071E3]" />
+              <h3 className="text-[15px] font-semibold text-[#1D1D1F] tracking-tight">{strategyName}</h3>
+            </div>
+            <span className="px-2 py-0.5 rounded-full bg-[#00000006] text-[12px] text-[#86868B] font-medium">
+              {productCount} 只
+            </span>
+          </div>
+          <div className="flex items-center justify-center h-[120px]">
+            <p className="text-[#86868B] text-[13px]">收益指标计算中...</p>
+          </div>
+        </div>
+      );
+    }
     return (
       <div className="glass-card rounded-3xl min-h-[180px] flex items-center justify-center p-6">
         <p className="text-[#86868B] text-[15px]">暂无数据</p>

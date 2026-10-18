@@ -112,11 +112,9 @@ export default function StrategyMaintenancePage() {
 
       const data = await response.json();
       if (response.ok) {
-        setMessage(`✅ 已更新: ${data.productName}`);
-        // 更新本地状态
-        setProducts(prev =>
-          prev.map(p => (p.productCode === productCode ? { ...p, [field]: newValue } : p))
-        );
+        setMessage(`✅ 已更新: ${data.productName}${data.message ? ' - ' + data.message : ''}`);
+        // 重新加载产品列表，确保显示最新数据
+        await fetchProducts();
       } else {
         setMessage(`❌ 更新失败: ${data.error}`);
       }

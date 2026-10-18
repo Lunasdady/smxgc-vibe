@@ -22,6 +22,15 @@ export const STRATEGY_MAP: Record<string, string> = {
   '强势股': 'strong-stock',
 };
 
+// 动态获取所有策略类型（包括预定义和自定义）
+export async function getAllStrategyTypes(): Promise<Array<{ code: string; name: string }>> {
+  // 这里暂时返回预定义策略，未来可以从数据库动态加载
+  return Object.entries(STRATEGY_NAME_MAP).map(([code, name]) => ({
+    code,
+    name,
+  }));
+}
+
 export const STRATEGY_NAME_MAP: Record<string, string> = {
   'subjective-long': '主观多头',
   'index-enhanced-300': '300指增',
@@ -62,6 +71,15 @@ export function getFuturesStrategies(dataDate: string | null): string[] {
   
   return date >= cutoffDate ? NEW_CTA_STRATEGIES : OLD_FUTURES_STRATEGIES;
 }
+
+// 策略类型对应的二级策略（策略分类）列表
+export const STRATEGY_SUBCATEGORIES: Record<string, string[]> = {
+  'index-enhanced-alternative': ['A500指增', '另类指增', '红利指增'],
+  'timing-long-short': ['择时策略', '股票多空'],
+  'market-neutral-t0': ['市场中性', '股票T0'],
+  'quantitative-cta': ['中高频时序CTA', '时序CTA'],
+  'arbitrage': ['ETF套利', '期权套利', '期货套利', '混合套利', '可转债套利'],
+};
 
 // 策略分组
 export const STRATEGY_GROUPS = [
@@ -218,7 +236,9 @@ export interface FiveNumberStats {
 export interface StrategyOverview {
   strategyType: string;
   strategyName: string;
+  groupName?: string;  // 一级策略分组名称（自定义策略使用）
   count: number;
+  totalCount?: number;  // 总产品数（包含指标为null的产品）
   min: number | null;
   q25: number | null;
   median: number | null;

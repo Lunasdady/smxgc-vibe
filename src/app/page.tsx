@@ -3,10 +3,9 @@
 import { useEffect, useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAppStore } from '@/lib/store';
-import { StrategyOverview, STRATEGY_GROUPS, STRATEGY_NAME_MAP, getMetricFields, getFuturesStrategies, getNonIndexEnhancedMetricLabel } from '@/lib/types';
+import { StrategyOverview, getMetricFields, getFuturesStrategies, getNonIndexEnhancedMetricLabel } from '@/lib/types';
 import DateSelector from '@/components/DateSelector';
 import BoxPlot from '@/components/BoxPlot';
-import WeeklyDetailTable from '@/components/WeeklyDetailTable';
 import Navbar from '@/components/Navbar';
 import MetricSelector from '@/components/MetricSelector';
 import { useScrollReveal } from '@/hooks/useScrollReveal';
@@ -20,18 +19,66 @@ export default function HomePage() {
   const { dataDate, metric, initialize, initializing, heroTitle, heroSubtitle } = useAppStore();
   const [strategies, setStrategies] = useState<StrategyOverview[]>([]);
   const [loading, setLoading] = useState(true);
-  const [selectedStrategy, setSelectedStrategy] = useState<string | null>(null);
 
   // 动态获取期货策略列表（根据日期切换旧期货/新CTA）
   const futuresStrategies = getFuturesStrategies(dataDate);
   
-  // 构建动态策略分组（替换期货策略组的策略列表）
-  const dynamicStrategyGroups = STRATEGY_GROUPS.map(group => {
-    if (group.isDynamic) {
-      return { ...group, strategies: futuresStrategies };
+  // 完全动态构建分组结构（基于API返回的数据）
+  // 1. 先按 groupName 分组，并保存排序信息
+  const groupedByCategory = new Map<string, { strategies: StrategyOverview[], sortOrder: number }>();
+  
+  for (const strategy of strategies) {
+    // 确定分组名称
+    let groupName: string;
+    
+    if (strategy.groupName) {
+      // 自定义策略：使用 API 返回的 groupName
+      groupName = strategy.groupName;
+    } else {
+      // 预定义策略：根据 strategyType 判断分组
+      const indexEnhancedTypes = [
+        'index-enhanced-300',
+        'index-enhanced-500',
+        'index-enhanced-1000',
+        'index-enhanced-2000',
+        'index-enhanced-alternative',
+      ];
+      
+      if (indexEnhancedTypes.includes(strategy.strategyType)) {
+        groupName = '指增策略';
+      } else if (futuresStrategies.includes(strategy.strategyType)) {
+        // 期货/CTA 策略：根据实际配置确定分组名
+        const subjectiveFutures = ['subjective-futures', 'subjective-cta'];
+        const quantitativeFutures = ['quantitative-futures', 'quantitative-cta'];
+        
+        if (subjectiveFutures.includes(strategy.strategyType)) {
+          groupName = '主观期货';
+        } else if (quantitativeFutures.includes(strategy.strategyType)) {
+          groupName = '量化期货';
+        } else {
+          groupName = '期货策略';
+        }
+      } else {
+        // 其他预定义策略
+        groupName = '其他策略';
+      }
     }
-    return group;
-  });
+    
+    if (!groupedByCategory.has(groupName)) {
+      // 使用 API 返回的排序值，默认 999
+      groupedByCategory.set(groupName, { strategies: [], sortOrder: (strategy as any).groupSortOrder ?? 999 });
+    }
+    groupedByCategory.get(groupName)!.strategies.push(strategy);
+  }
+  
+  // 2. 构建动态分组数组并按 sortOrder 排序
+  const dynamicStrategyGroups = Array.from(groupedByCategory.entries())
+    .sort((a, b) => a[1].sortOrder - b[1].sortOrder) // 按 sortOrder 升序排序
+    .map(([name, { strategies: stratList }]) => ({
+      name,
+      strategies: stratList.map(s => s.strategyType),
+      hasSubmenu: stratList.length > 1,
+    }));
 
   // 使用动态指标字段（首页不指定策略类型，使用指增新字段）
   const metricFields = getMetricFields(dataDate, null);
@@ -207,7 +254,7 @@ export default function HomePage() {
                 if (groupStrategies.length === 0) return null;
 
                 const hasSubmenu = group.hasSubmenu && groupStrategies.length > 1;
-                const totalInGroup = groupStrategies.reduce((s, g) => s + g.count, 0);
+                const totalInGroup = groupStrategies.reduce((s, g) => s + (g.totalCount || g.count), 0);
 
                 return (
                   <section key={group.name}>
@@ -236,8 +283,7 @@ export default function HomePage() {
                         return (
                           <div
                             key={strategy.strategyType}
-                            className="group glass-card rounded-3xl p-5 glass-card-hover cursor-pointer"
-                            onClick={() => setSelectedStrategy(strategy.strategyType)}
+                            className="group glass-card rounded-3xl p-5 glass-card-hover"
                           >
                             <BoxPlot
                               strategy={strategy}
@@ -245,7 +291,6 @@ export default function HomePage() {
                               metric={metric}
                               metricName={displayMetricLabel}
                               isPercentage={strategyCurrentMetric.isPercentage}
-                              onClick={() => setSelectedStrategy(strategy.strategyType)}
                             />
                             <div 
                               className="mt-3 flex items-center justify-between text-[12px] text-[#86868B] group-hover:text-[#0071E3] transition-colors cursor-pointer"
@@ -273,17 +318,6 @@ export default function HomePage() {
                 );
               })}
             </div>
-          </div>
-        )}
-
-        {/* Weekly Detail Table */}
-        {selectedStrategy && (
-          <div className="mt-12 scroll-reveal revealed">
-            <WeeklyDetailTable
-              strategyType={selectedStrategy}
-              dataDate={dataDate!}
-              onClose={() => setSelectedStrategy(null)}
-            />
           </div>
         )}
       </main>

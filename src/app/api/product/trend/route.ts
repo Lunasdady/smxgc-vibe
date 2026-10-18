@@ -10,6 +10,7 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
     const productCode = searchParams.get('productCode');
     const months = parseInt(searchParams.get('months') || '6');
+    const specificDate = searchParams.get('date'); // 指定日期（格式：YYYY-MM-DD）
 
     if (!productCode) {
       return NextResponse.json(
@@ -17,9 +18,6 @@ export async function GET(request: Request) {
         { status: 400 }
       );
     }
-
-    // 计算6个月前的日期
-    const startDate = dayjs().subtract(months, 'month').startOf('month').toDate();
 
     // 获取产品基本信息
     const product = await prisma.strategyMapping.findFirst({
@@ -40,12 +38,16 @@ export async function GET(request: Request) {
       );
     }
 
-    // 获取近6个月的净值数据
+    // 使用传入的日期或当前日期作为基准，计算6个月前的起始日期
+    const baseDate = specificDate ? dayjs(specificDate) : dayjs();
+    const startDate = baseDate.subtract(months, 'month').startOf('month').toDate();
+
     const navData = await prisma.navData.findMany({
       where: {
         productCode,
         navDate: {
           gte: startDate,
+          lte: baseDate.endOf('day').toDate(),
         },
       },
       orderBy: { navDate: 'asc' },
@@ -56,14 +58,29 @@ export async function GET(request: Request) {
       },
     });
 
-    // 过滤出周五的数据
-    const fridayNavData = navData.filter(item => {
-      const dayOfWeek = dayjs(item.navDate).day();
-      return dayOfWeek === 5; // 5表示周五
+    // 查询近6个月内系统有计算指标的所有日期（FundProduct中的distinct dataDate）
+    const availableDatesResult: any[] = await prisma.$queryRaw`
+      SELECT DISTINCT dataDate 
+      FROM FundProduct 
+      WHERE dataDate >= ${startDate.getTime()} AND dataDate <= ${baseDate.endOf('day').valueOf()}
+      ORDER BY dataDate ASC
+    `;
+
+    // 构建可用日期集合（毫秒时间戳转字符串）
+    const availableDateSet = new Set(
+      availableDatesResult.map((d: any) => {
+        const dateValue = new Date(Number(d.dataDate));
+        return dayjs(dateValue).format('YYYY-MM-DD');
+      })
+    );
+
+    // 过滤净值数据：只保留在 availableDateSet 中的日期
+    const filteredNavData = navData.filter(item => {
+      const dateStr = dayjs(item.navDate).format('YYYY-MM-DD');
+      return availableDateSet.has(dateStr);
     });
 
-    // 格式化返回数据
-    const formattedData = fridayNavData
+    const formattedData = filteredNavData
       .filter(item => item.unitNav !== null)
       .map(item => ({
         date: dayjs(item.navDate).format('YYYY-MM-DD'),
@@ -77,7 +94,7 @@ export async function GET(request: Request) {
       productName: product.productName,
       primaryStrategy: product.primaryStrategy,
       secondaryStrategy: product.secondaryStrategy,
-      category: product.category,
+      category: (product as any).category,
       navData: formattedData,
       dataPoints: formattedData.length,
     });

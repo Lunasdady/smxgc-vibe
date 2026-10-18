@@ -1,6 +1,7 @@
 import cron from 'node-cron';
 import prisma from '@/lib/db';
 import { parseEmailConfig } from './engine';
+import dayjs from 'dayjs';
 
 let schedulerStarted = false;
 
@@ -22,6 +23,10 @@ export function initEmailScheduler(): void {
     console.log(`⏰ 触发定时邮件解析任务 [${new Date().toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' })}]`);
     try {
       await executeParseTask();
+      
+      // 邮件解析完成后，自动计算最新日期的收益指标
+      console.log('🔄 邮件解析完成，开始自动计算收益指标...');
+      await autoCalculateMetrics();
     } catch (error) {
       console.error('❌ 定时解析任务失败:', error);
     }
@@ -98,5 +103,129 @@ async function parseSingleEmail(configId: number): Promise<void> {
     console.error(`❌ 解析邮箱配置ID ${configId} 失败:`, error.message);
     console.error(error.stack);
     throw error;
+  }
+}
+
+/**
+ * 自动计算最新日期的收益指标
+ * 在邮件解析完成后调用，计算最新有净值但无指标的日期
+ */
+async function autoCalculateMetrics(): Promise<void> {
+  try {
+    console.log('📊 开始自动计算收益指标...');
+    
+    // 查找最近7天内有净值数据但尚未计算指标的日期
+    const sevenDaysAgo = dayjs().subtract(7, 'day').startOf('day').toDate();
+    
+    // 获取最近有净值的日期（按日期分组）
+    const navDates: any[] = await prisma.$queryRaw`
+      SELECT DISTINCT navDate 
+      FROM NavData 
+      WHERE navDate >= ${sevenDaysAgo.getTime()}
+      ORDER BY navDate DESC
+    `;
+    
+    // 获取已有指标的日期
+    const fundProductDates: any[] = await prisma.$queryRaw`
+      SELECT DISTINCT dataDate 
+      FROM FundProduct 
+      WHERE dataDate >= ${sevenDaysAgo.getTime()}
+      ORDER BY dataDate DESC
+    `;
+    
+    const fundProductDateSet = new Set(
+      fundProductDates.map((d: any) => Number(d.dataDate))
+    );
+    
+    // 找出有净值但无指标的日期
+    const missingDates = navDates
+      .map((d: any) => Number(d.navDate))
+      .filter((timestamp: number) => !fundProductDateSet.has(timestamp));
+    
+    if (missingDates.length === 0) {
+      console.log('✅ 所有日期的指标已计算，无需补充');
+      return;
+    }
+    
+    console.log(`📅 发现 ${missingDates.length} 个日期需要计算指标`);
+    
+    // 对每个缺失的日期计算指标
+    for (const timestamp of missingDates) {
+      const dateStr = dayjs(timestamp).format('YYYY-MM-DD');
+      console.log(`🧮 计算 ${dateStr} 的收益指标...`);
+      
+      try {
+        // 获取观察池的所有产品
+        const products = await prisma.$queryRaw`
+          SELECT * FROM StrategyMapping WHERE category = '观察池'
+        `;
+        
+        let successCount = 0;
+        let failCount = 0;
+        
+        for (const product of products as any[]) {
+          try {
+            const targetDate = new Date(timestamp);
+            const startDate = dayjs(targetDate).subtract(6, 'month').toDate();
+            
+            const navData = await prisma.navData.findMany({
+              where: {
+                productCode: product.productCode,
+                navDate: {
+                  gte: startDate,
+                  lte: targetDate,
+                },
+              },
+              orderBy: { navDate: 'asc' },
+            });
+            
+            if (navData.length === 0) {
+              failCount++;
+              continue;
+            }
+            
+            // 动态导入计算函数，避免循环依赖
+            const { calculateAllMetrics } = await import('@/lib/metrics-calculator');
+            const { getStrategyType } = await import('@/lib/strategy-type-utils');
+            
+            const formattedNavData = navData
+              .filter(n => n.unitNav !== null)
+              .map(n => ({
+                navDate: n.navDate,
+                unitNav: n.unitNav as number,
+              }));
+            
+            const metrics = calculateAllMetrics(formattedNavData, targetDate);
+            
+            // 使用原始SQL插入/更新，避免Prisma类型问题
+            await prisma.$executeRaw`
+              INSERT INTO FundProduct (productCode, productName, dataDate, strategyType, fundManager, managerScale, isLargeScale, weeklyReturn, monthlyReturn, ytdReturn, annualizedReturnSinceInception, ytdMaxDrawdown, inceptionMaxDrawdown, annualizedVolatility, sharpeRatio)
+              VALUES (${product.productCode}, ${product.productName}, ${timestamp}, ${getStrategyType(product.primaryStrategy, product.secondaryStrategy)}, '', '', 0, ${metrics.weeklyReturn}, ${metrics.monthlyReturn}, ${metrics.ytdReturn}, ${metrics.annualizedReturnSinceInception}, ${metrics.ytdMaxDrawdown}, ${metrics.inceptionMaxDrawdown}, ${metrics.annualizedVolatility}, ${metrics.sharpeRatio})
+              ON CONFLICT(productCode, dataDate) DO UPDATE SET
+                weeklyReturn = ${metrics.weeklyReturn},
+                monthlyReturn = ${metrics.monthlyReturn},
+                ytdReturn = ${metrics.ytdReturn},
+                annualizedReturnSinceInception = ${metrics.annualizedReturnSinceInception},
+                ytdMaxDrawdown = ${metrics.ytdMaxDrawdown},
+                inceptionMaxDrawdown = ${metrics.inceptionMaxDrawdown},
+                annualizedVolatility = ${metrics.annualizedVolatility},
+                sharpeRatio = ${metrics.sharpeRatio}
+            `;
+            
+            successCount++;
+          } catch (error) {
+            failCount++;
+          }
+        }
+        
+        console.log(`✅ ${dateStr} 计算完成: 成功${successCount}个, 失败${failCount}个`);
+      } catch (error: any) {
+        console.error(`❌ ${dateStr} 指标计算失败:`, error.message);
+      }
+    }
+    
+    console.log('🎉 自动计算收益指标完成');
+  } catch (error: any) {
+    console.error('❌ 自动计算收益指标失败:', error.message);
   }
 }

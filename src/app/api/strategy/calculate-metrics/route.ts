@@ -265,6 +265,29 @@ export async function PUT(request: Request) {
       try {
         // 调用计算逻辑
         const targetDate = dataDate ? new Date(dataDate) : new Date();
+        
+        // 🔧 修复：首先检查该产品在目标日期当天是否有净值数据
+        const targetDateStart = new Date(targetDate);
+        targetDateStart.setHours(0, 0, 0, 0);
+        const targetDateEnd = new Date(targetDate);
+        targetDateEnd.setHours(23, 59, 59, 999);
+        
+        const targetDayNavCount = await prisma.navData.count({
+          where: {
+            productCode: product.productCode,
+            navDate: {
+              gte: targetDateStart,
+              lte: targetDateEnd,
+            },
+          },
+        });
+        
+        // 如果当天没有净值数据，跳过该产品
+        if (targetDayNavCount === 0) {
+          failCount++;
+          continue;
+        }
+        
         const startDate = dayjs(targetDate).subtract(6, 'month').toDate();
 
         const navData = await prisma.navData.findMany({

@@ -250,6 +250,33 @@ export async function PUT(request: Request) {
     const body = await request.json();
     const { category, dataDate } = body;
 
+    // 🔧 修复：首先检查目标日期当天的净值数据总量
+    const targetDateForCheck = dataDate ? new Date(dataDate) : new Date();
+    const targetDateStart = new Date(targetDateForCheck);
+    targetDateStart.setHours(0, 0, 0, 0);
+    const targetDateEnd = new Date(targetDateForCheck);
+    targetDateEnd.setHours(23, 59, 59, 999);
+    
+    const totalNavCount = await prisma.navData.count({
+      where: {
+        navDate: {
+          gte: targetDateStart,
+          lte: targetDateEnd,
+        },
+      },
+    });
+    
+    // 如果当天净值数据少于 500 条，不计算指标
+    const MIN_NAV_THRESHOLD = 500;
+    if (totalNavCount < MIN_NAV_THRESHOLD) {
+      return NextResponse.json({
+        success: false,
+        message: `当天净值数据不足（${totalNavCount} 条），阈值 ${MIN_NAV_THRESHOLD} 条，跳过计算`,
+        totalNavCount,
+        threshold: MIN_NAV_THRESHOLD,
+      }, { status: 400 });
+    }
+
     // 获取指定分类的所有产品
     const products = await prisma.strategyMapping.findMany({
       where: {

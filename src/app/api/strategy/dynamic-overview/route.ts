@@ -1,6 +1,9 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/db';
 
+// 告诉 Next.js 此路由必须动态渲染
+export const dynamic = 'force-dynamic';
+
 /**
  * 获取动态策略统计信息
  * 根据策略字典动态返回一级策略、二级策略及产品统计

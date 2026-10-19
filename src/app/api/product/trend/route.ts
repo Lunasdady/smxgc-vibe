@@ -2,6 +2,9 @@ import { NextResponse } from 'next/server';
 import prisma from '@/lib/db';
 import dayjs from 'dayjs';
 
+// 告诉 Next.js 此路由必须动态渲染
+export const dynamic = 'force-dynamic';
+
 /**
  * 获取产品净值走势数据（近6个月的周五数据）
  */

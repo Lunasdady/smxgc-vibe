@@ -1,5 +1,8 @@
 import { NextResponse } from 'next/server';
 
+// 告诉 Next.js 此路由必须动态渲染
+export const dynamic = 'force-dynamic';
+
 // 导入进度存储（需要与import/route.ts共享）
 // 由于模块隔离，我们需要从import模块导出Map
 let importProgressMap: Map<string, any>;

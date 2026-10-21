@@ -60,8 +60,10 @@ if [ -f "cron-scheduler.js" ]; then
   
   # 检查是否存在 ecosystem.config.js
   if [ -f "ecosystem.config.js" ]; then
-    echo "使用 ecosystem.config.js 重启所有进程..."
-    pm2 delete all 2>/dev/null || true
+    echo "使用 ecosystem.config.js 重启测试环境进程..."
+    # 只删除测试环境进程，不影响生产环境
+    pm2 delete smxgc-vibe-test 2>/dev/null || true
+    pm2 delete smxgc-vibe-test-scheduler 2>/dev/null || true
     sleep 2
     pm2 start ecosystem.config.js
     pm2 save

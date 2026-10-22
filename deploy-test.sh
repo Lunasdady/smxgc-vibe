@@ -25,11 +25,18 @@ sudo git reset --hard origin/feature
 echo "✅ 代码已同步到 feature 分支最新"
 echo ""
 
-echo "Step 2: 备份用户权限数据..."
+echo "Step 2: 备份数据库和用户权限数据..."
+echo "===================================="
+# 完整数据库备份
+echo "📦 备份完整数据库..."
 sudo cp prisma/dev.db "prisma/dev.db.backup.${BACKUP_DATE}"
-sudo sqlite3 prisma/dev.db ".mode csv" ".headers on" ".output users_backup_${BACKUP_DATE}.csv" "SELECT id, email, realName, organization, status, permissions, createdAt FROM User;" 2>/dev/null || true
-sudo sqlite3 prisma/dev.db ".output stdout"
-echo "✅ 用户数据已备份"
+echo "✅ 数据库完整备份完成: dev.db.backup.${BACKUP_DATE}"
+
+# 备份用户权限数据
+echo "📦 备份用户权限数据..."
+sudo sqlite3 prisma/dev.db ".dump User" > "users_backup_${BACKUP_DATE}.sql" 2>/dev/null || true
+USER_COUNT=$(sudo sqlite3 prisma/dev.db "SELECT COUNT(*) FROM User;" 2>/dev/null || echo "0")
+echo "✅ 用户权限数据备份完成: $USER_COUNT 条记录"
 echo ""
 
 echo "Step 3: 安装依赖..."
@@ -37,9 +44,33 @@ sudo npm install
 echo "✅ 依赖安装完成"
 echo ""
 
-echo "Step 4: 同步数据库结构..."
-sudo npx prisma db push --accept-data-loss
-echo "✅ 数据库结构已同步"
+echo "Step 4: 检查数据库 schema 变更..."
+echo "===================================="
+# 检查是否有 schema 变更
+SCHEMA_CHANGES=$(git diff HEAD~1 -- prisma/schema.prisma 2>/dev/null | wc -l | tr -d ' ')
+
+if [ "$SCHEMA_CHANGES" -gt 0 ]; then
+    echo "⚠️  检测到数据库 schema 变更！"
+    echo ""
+    echo "变更内容："
+    git diff HEAD~1 -- prisma/schema.prisma 2>/dev/null | head -50
+    echo ""
+    echo "⚠️  警告：如果继续，可能会修改数据库结构"
+    read -p "确认继续执行数据库同步？(yes/no): " confirm_schema
+    if [ "$confirm_schema" != "yes" ]; then
+        echo "❌ 操作已取消"
+        exit 1
+    fi
+    
+    echo "📦 备份数据库..."
+    sudo cp prisma/dev.db "prisma/dev.db.before-schema-change.${BACKUP_DATE}"
+    echo "✅ 数据库已备份"
+    
+    echo "同步数据库结构..."
+    sudo npx prisma db push
+else
+    echo "✅ 未检测到 schema 变更，跳过数据库同步"
+fi
 echo ""
 
 echo "Step 5: 生成 Prisma Client..."
@@ -101,4 +132,9 @@ echo "✅ 测试环境部署完成!"
 echo "===================================="
 echo "访问地址: http://122.51.51.46:$PORT"
 echo "查看日志: sudo pm2 logs $PM2_NAME --lines 50"
+echo ""
+echo "🔄 如需回滚，执行以下命令："
+echo "   cd $APP_DIR"
+echo "   sudo cp prisma/dev.db.backup.${BACKUP_DATE} prisma/dev.db"
+echo "   sudo pm2 restart $PM2_NAME --update-env"
 echo ""

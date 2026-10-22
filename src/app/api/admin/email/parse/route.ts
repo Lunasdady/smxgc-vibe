@@ -158,6 +158,20 @@ async function executeParse(taskId: string, configId: number, fullParse: boolean
         completedAt: new Date(),
       },
     });
+    
+    // 🚨 关键：解析成功后，自动计算最新日期的收益指标
+    if (result.success) {
+      console.log('🔄 邮件解析成功，开始自动计算收益指标...');
+      try {
+        // 动态导入，避免循环依赖
+        const { autoCalculateMetrics } = await import('@/lib/email-parser/scheduler');
+        await autoCalculateMetrics();
+        console.log('✅ 自动计算收益指标完成');
+      } catch (error) {
+        console.error('❌ 自动计算收益指标失败:', error);
+        // 不影响解析任务的成功状态
+      }
+    }
   } catch (error: any) {
     // 如果是取消导致的错误,不标记为failed
     if (cancelSignalMap.get(taskId)) {

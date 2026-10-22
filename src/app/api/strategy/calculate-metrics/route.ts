@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import prisma from '@/lib/db';
 import { calculateAllMetrics, calculateExcessMetrics } from '@/lib/metrics-calculator';
 import dayjs from 'dayjs';
+import { checkIfBeforeHoliday } from '@/lib/email-parser/scheduler';
 
 /**
  * 计算并更新产品收益指标
@@ -277,14 +278,34 @@ export async function PUT(request: Request) {
       }, { status: 400 });
     }
 
-    // 🔧 修复：检查是否是周五或节假日前工作日（目前只检查周五）
-    const targetDayOfWeek = targetDateForCheck.getDay(); // 0=周日, 5=周五
-    if (targetDayOfWeek !== 5) {
+    // 🔧 修复：检查是否是周五或节假日前工作日
+    const targetDayOfWeek = targetDateForCheck.getDay(); // 0=周日, 5=周五, 6=周六
+    const targetDateStr = dayjs(targetDateForCheck).format('YYYY-MM-DD');
+    
+    // 周末不允许计算
+    if (targetDayOfWeek === 0 || targetDayOfWeek === 6) {
+      return NextResponse.json({
+        success: false,
+        message: '不能计算周末的指标',
+        currentDay: targetDayOfWeek,
+        currentDayName: ['周日', '周一', '周二', '周三', '周四', '周五', '周六'][targetDayOfWeek],
+      }, { status: 400 });
+    }
+    
+    // 周五允许计算
+    const isFriday = targetDayOfWeek === 5;
+    
+    // 检查是否是节假日前工作日
+    const isHolidayEve = checkIfBeforeHoliday(targetDateForCheck.getTime());
+    
+    // 只有周五或节假日前工作日才允许计算
+    if (!isFriday && !isHolidayEve) {
       return NextResponse.json({
         success: false,
         message: '只能计算周五或节假日前工作日的指标',
         currentDay: targetDayOfWeek,
         currentDayName: ['周日', '周一', '周二', '周三', '周四', '周五', '周六'][targetDayOfWeek],
+        isHolidayEve,
       }, { status: 400 });
     }
 

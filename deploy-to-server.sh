@@ -28,23 +28,48 @@ echo "检查定时任务依赖..."
 npm list dotenv node-cron node-fetch@2 > /dev/null 2>&1 || npm install dotenv node-cron node-fetch@2
 
 echo ""
-echo "[3/8] 同步数据库schema..."
+echo "[3/9] 检查数据库 schema 变更..."
 echo "===================================="
-npx prisma db push
+# 检查是否有 schema 变更
+SCHEMA_CHANGES=$(git diff HEAD~1 -- prisma/schema.prisma 2>/dev/null | wc -l | tr -d ' ')
+
+if [ "$SCHEMA_CHANGES" -gt 0 ]; then
+    echo "⚠️  检测到数据库 schema 变更！"
+    echo ""
+    echo "变更内容："
+    git diff HEAD~1 -- prisma/schema.prisma 2>/dev/null | head -50
+    echo ""
+    echo "⚠️  警告：如果继续，可能会修改数据库结构"
+    read -p "确认继续执行数据库同步？(yes/no): " confirm_schema
+    if [ "$confirm_schema" != "yes" ]; then
+        echo "❌ 操作已取消"
+        exit 1
+    fi
+    
+    echo "📦 备份数据库..."
+    BACKUP_DATE=$(date +%Y%m%d_%H%M%S)
+    cp prisma/dev.db "prisma/dev.db.before-schema-change.${BACKUP_DATE}"
+    echo "✅ 数据库已备份"
+    
+    echo "同步数据库结构..."
+    npx prisma db push
+else
+    echo "✅ 未检测到 schema 变更，跳过数据库同步"
+fi
 
 echo ""
-echo "[4/8] 生成Prisma Client..."
+echo "[4/9] 生成Prisma Client..."
 echo "===================================="
 npx prisma generate
 
 echo ""
-echo "[5/8] 构建生产版本..."
+echo "[5/9] 构建生产版本..."
 echo "===================================="
 rm -rf .next
 npm run build
 
 echo ""
-echo "[6/8] 复制静态资源和环境变量..."
+echo "[6/9] 复制静态资源和环境变量..."
 echo "===================================="
 cp -r .next/static .next/standalone/.next/
 cp -r public .next/standalone/
@@ -107,3 +132,10 @@ echo "===================================="
 echo ""
 echo "访问地址: http://122.51.51.46:7371"
 echo "查看日志: pm2 logs smxgc-vibe-test --lines 50"
+echo ""
+echo "🔄 如需回滚，执行以下命令："
+echo "   cd $TEST_PATH"
+echo "   ls -lt prisma/dev.db.backup.* prisma/dev.db.before-schema-change.* 2>/dev/null | head -3"
+echo "   cp <最新备份文件> prisma/dev.db"
+echo "   pm2 restart smxgc-vibe-test --update-env"
+echo ""

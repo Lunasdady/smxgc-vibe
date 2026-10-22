@@ -21,11 +21,11 @@ git pull origin feature
 echo ""
 echo "[2/9] 安装依赖..."
 echo "===================================="
-npm install
+sudo npm install
 
 # 确保定时任务所需的依赖也已安装
 echo "检查定时任务依赖..."
-npm list dotenv node-cron node-fetch@2 > /dev/null 2>&1 || npm install dotenv node-cron node-fetch@2
+sudo npm list dotenv node-cron node-fetch@2 > /dev/null 2>&1 || sudo npm install dotenv node-cron node-fetch@2
 
 echo ""
 echo "[3/9] 检查数据库 schema 变更..."
@@ -60,20 +60,20 @@ fi
 echo ""
 echo "[4/9] 生成Prisma Client..."
 echo "===================================="
-npx prisma generate
+sudo npx prisma generate
 
 echo ""
 echo "[5/9] 构建生产版本..."
 echo "===================================="
-rm -rf .next
-npm run build
+sudo rm -rf .next
+sudo npm run build
 
 echo ""
 echo "[6/9] 复制静态资源和环境变量..."
 echo "===================================="
-cp -r .next/static .next/standalone/.next/
-cp -r public .next/standalone/
-cp .env .next/standalone/.env
+sudo cp -r .next/static .next/standalone/.next/
+sudo cp -r public .next/standalone/
+sudo cp .env .next/standalone/.env
 
 echo ""
 echo "[7/9] 重启服务..."
